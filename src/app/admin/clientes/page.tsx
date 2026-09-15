@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Plus, Search, Phone, Mail, Calendar, UserPlus, Edit2, CheckCircle2 } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, Calendar, UserPlus, Edit2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { getAllUsers, createClientProfile, UserProfile } from '@/lib/firestore-service';
+import { isValidArgentineDni, isValidArgentinePhone, isValidEmail } from '@/lib/validation';
 
 export default function AdminClientesPage() {
   const [clients, setClients] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; phone?: string; dni?: string; form?: string }>({});
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -22,7 +25,6 @@ export default function AdminClientesPage() {
     setLoading(true);
     try {
       const allUsers = await getAllUsers();
-      // Filter users who have CLIENT role or all registered accounts
       setClients(allUsers);
     } catch (e) {
       console.error('Error fetching clients:', e);
@@ -35,15 +37,45 @@ export default function AdminClientesPage() {
     loadClients();
   }, []);
 
+  const validate = () => {
+    const newErrors: { email?: string; phone?: string; dni?: string; form?: string } = {};
+
+    if (!formData.firstName.trim()) {
+      newErrors.form = 'El nombre es obligatorio';
+    } else if (!formData.lastName.trim()) {
+      newErrors.form = 'El apellido es obligatorio';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'El correo electrónico es obligatorio';
+    } else if (!isValidEmail(formData.email)) {
+      newErrors.email = 'Ingrese un correo electrónico válido (ejemplo: usuario@correo.com)';
+    }
+
+    if (formData.phone.trim() && !isValidArgentinePhone(formData.phone)) {
+      newErrors.phone = 'Número de Argentina inválido. Ingrese con código de área (ej: 11 2345-6789 o +54 9 11 2345-6789)';
+    }
+
+    if (formData.dni.trim() && !isValidArgentineDni(formData.dni)) {
+      newErrors.dni = 'DNI inválido. Debe contener entre 7 y 8 números válidos (ej: 38123456)';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validate()) return;
+
+    setSaving(true);
     try {
       await createClientProfile({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        phone: formData.phone,
-        dni: formData.dni,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(),
+        dni: formData.dni.replace(/[\.\s\-]/g, ''),
         birthDate: formData.birthDate,
         roles: ['CLIENT'],
         emailVerified: false,
@@ -57,9 +89,12 @@ export default function AdminClientesPage() {
         dni: '',
         birthDate: '',
       });
+      setErrors({});
       await loadClients();
     } catch (err) {
-      alert('Error al guardar cliente en Firestore');
+      setErrors({ form: 'No se pudo registrar el cliente. Intente nuevamente.' });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -211,6 +246,27 @@ export default function AdminClientesPage() {
             <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xl)', marginBottom: 'var(--space-4)' }}>
               Registrar Nuevo Cliente
             </h3>
+
+            {errors.form && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 14px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid var(--accent-error)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--accent-error)',
+                  fontSize: 'var(--text-xs)',
+                  marginBottom: 16,
+                }}
+              >
+                <AlertCircle size={16} />
+                <span>{errors.form}</span>
+              </div>
+            )}
+
             <form onSubmit={handleCreate}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="mb-3">
                 <div className="form-group">
@@ -218,6 +274,7 @@ export default function AdminClientesPage() {
                   <input
                     type="text"
                     required
+                    placeholder="Ej: Ana"
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     className="form-input"
@@ -228,6 +285,7 @@ export default function AdminClientesPage() {
                   <input
                     type="text"
                     required
+                    placeholder="Ej: Gómez"
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                     className="form-input"
@@ -240,41 +298,86 @@ export default function AdminClientesPage() {
                 <input
                   type="email"
                   required
+                  placeholder="ejemplo@correo.com"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, email: e.target.value });
+                    if (errors.email) setErrors({ ...errors, email: undefined });
+                  }}
                   className="form-input"
+                  style={{ borderColor: errors.email ? 'var(--accent-error)' : undefined }}
                 />
+                {errors.email && (
+                  <span style={{ color: 'var(--accent-error)', fontSize: 'var(--text-xs)', marginTop: 4, display: 'block' }}>
+                    {errors.email}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="mb-4">
                 <div className="form-group">
-                  <label className="form-label">Teléfono / WhatsApp</label>
+                  <label className="form-label">Teléfono (Argentina)</label>
                   <input
                     type="text"
                     placeholder="11 2345-6789"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, phone: e.target.value });
+                      if (errors.phone) setErrors({ ...errors, phone: undefined });
+                    }}
                     className="form-input"
+                    style={{ borderColor: errors.phone ? 'var(--accent-error)' : undefined }}
                   />
+                  {errors.phone ? (
+                    <span style={{ color: 'var(--accent-error)', fontSize: '11px', marginTop: 4, display: 'block' }}>
+                      {errors.phone}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginTop: 2, display: 'block' }}>
+                      Ej: 11 2345-6789 o +54 9 11 ...
+                    </span>
+                  )}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">DNI</label>
+                  <label className="form-label">DNI Argentino</label>
                   <input
                     type="text"
                     placeholder="12345678"
+                    maxLength={10}
                     value={formData.dni}
-                    onChange={(e) => setFormData({ ...formData, dni: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, dni: e.target.value });
+                      if (errors.dni) setErrors({ ...errors, dni: undefined });
+                    }}
                     className="form-input"
+                    style={{ borderColor: errors.dni ? 'var(--accent-error)' : undefined }}
                   />
+                  {errors.dni ? (
+                    <span style={{ color: 'var(--accent-error)', fontSize: '11px', marginTop: 4, display: 'block' }}>
+                      {errors.dni}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginTop: 2, display: 'block' }}>
+                      7 u 8 dígitos sin letras
+                    </span>
+                  )}
                 </div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-                <button type="button" onClick={() => setShowModal(false)} className="btn btn--secondary">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    setErrors({});
+                  }}
+                  className="btn btn--secondary"
+                  disabled={saving}
+                >
                   Cancelar
                 </button>
-                <button type="submit" className="btn btn--primary">
-                  Guardar en Base de Datos
+                <button type="submit" className="btn btn--primary" disabled={saving}>
+                  {saving ? 'Guardando...' : 'Guardar en Base de Datos'}
                 </button>
               </div>
             </form>

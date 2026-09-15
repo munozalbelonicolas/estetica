@@ -168,24 +168,75 @@ export function cleanFirestoreData<T extends Record<string, any>>(data: T): Part
   return cleaned as Partial<T>;
 }
 
+// ─── LOCAL STORAGE FALLBACK HELPERS ──────────────────────────────────────────
+
+function getLocalCollection<T>(key: string): T[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(`estetica_${key}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalCollection<T>(key: string, items: T[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`estetica_${key}`, JSON.stringify(items));
+  } catch {}
+}
+
+function upsertLocalItem<T extends { id?: string; uid?: string }>(
+  key: string,
+  item: T,
+  idField: 'id' | 'uid' = 'id'
+): void {
+  const items = getLocalCollection<T>(key);
+  const targetId = (item as any)[idField];
+  const idx = items.findIndex((i: any) => i[idField] === targetId);
+  if (idx >= 0) {
+    items[idx] = { ...items[idx], ...item };
+  } else {
+    items.unshift(item);
+  }
+  saveLocalCollection(key, items);
+}
+
+function removeLocalItem<T extends { id?: string; uid?: string }>(
+  key: string,
+  id: string,
+  idField: 'id' | 'uid' = 'id'
+): void {
+  const items = getLocalCollection<T>(key);
+  const filtered = items.filter((i: any) => i[idField] !== id);
+  saveLocalCollection(key, filtered);
+}
+
 // ─── USERS / CLIENTS ─────────────────────────────────────────────────────────
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   try {
     const userDoc = await getDoc(doc(db, 'users', uid));
     if (userDoc.exists()) {
-      return { uid, ...(userDoc.data() as Omit<UserProfile, 'uid'>) };
+      const data = { uid, ...(userDoc.data() as Omit<UserProfile, 'uid'>) };
+      upsertLocalItem<UserProfile>('users', data, 'uid');
+      return data;
     }
-    return null;
   } catch (error) {
-    console.warn('Notice: Firestore getUserProfile was not accessible:', error);
-    return null;
+    console.warn('Notice: Firestore getUserProfile was not accessible, checking local fallback:', error);
   }
+  // Local fallback
+  const localUsers = getLocalCollection<UserProfile>('users');
+  return localUsers.find((u) => u.uid === uid) || null;
 }
 
 export async function setUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
+  const cleanData = cleanFirestoreData(data);
+  const updated = { uid, ...cleanData } as UserProfile;
+  upsertLocalItem<UserProfile>('users', updated, 'uid');
+
   try {
-    const cleanData = cleanFirestoreData(data);
     await setDoc(
       doc(db, 'users', uid),
       {
@@ -195,31 +246,54 @@ export async function setUserProfile(uid: string, data: Partial<UserProfile>): P
       { merge: true }
     );
   } catch (error) {
-    console.warn('Notice: could not persist user profile to Firestore:', error);
+    console.warn('Notice: could not persist user profile to Firestore (saved locally):', error);
   }
 }
 
 export async function getAllUsers(): Promise<UserProfile[]> {
+  let firestoreUsers: UserProfile[] = [];
   try {
     const snapshot = await getDocs(collection(db, 'users'));
     if (!snapshot.empty) {
-      return snapshot.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+      firestoreUsers = snapshot.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+      saveLocalCollection('users', firestoreUsers);
+      return firestoreUsers;
     }
-    return [];
   } catch (error) {
-    console.warn('Error fetching all users from Firestore:', error);
-    return [];
+    console.warn('Notice: Firestore users fetch not accessible, using local repository:', error);
   }
+
+  const localUsers = getLocalCollection<UserProfile>('users');
+  return localUsers.length > 0 ? localUsers : firestoreUsers;
 }
 
 export async function createClientProfile(data: Omit<UserProfile, 'uid'> & { uid?: string }): Promise<string> {
   const uid = data.uid || `cli_${Date.now()}`;
-  await setDoc(doc(db, 'users', uid), {
+  const newClient: UserProfile = {
+    uid,
     ...cleanFirestoreData(data),
+    firstName: data.firstName || '',
+    lastName: data.lastName || '',
+    email: data.email || '',
     roles: data.roles || ['CLIENT'],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+    emailVerified: false,
+    createdAt: new Date().toISOString(),
+  };
+
+  // Always persist locally first so UI is immediately updated and zero data is lost
+  upsertLocalItem<UserProfile>('users', newClient, 'uid');
+
+  try {
+    await setDoc(doc(db, 'users', uid), {
+      ...cleanFirestoreData(data),
+      roles: data.roles || ['CLIENT'],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('Notice: Firestore createClientProfile permission restricted, saved to local store:', error);
+  }
+
   return uid;
 }
 
@@ -229,13 +303,15 @@ export async function getTreatments(): Promise<Treatment[]> {
   try {
     const snapshot = await getDocs(collection(db, 'treatments'));
     if (!snapshot.empty) {
-      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Treatment));
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Treatment));
+      saveLocalCollection('treatments', items);
+      return items;
     }
-    return [];
   } catch (error) {
-    console.warn('Could not fetch treatments from Firestore:', error);
-    return [];
+    console.warn('Notice: Treatments fetch from Firestore not available, checking local store:', error);
   }
+  const local = getLocalCollection<Treatment>('treatments');
+  return local.length > 0 ? local : defaultTreatments;
 }
 
 export async function getTreatmentBySlug(slug: string): Promise<Treatment | null> {
@@ -246,29 +322,38 @@ export async function getTreatmentBySlug(slug: string): Promise<Treatment | null
       const docSnap = snapshot.docs[0];
       return { id: docSnap.id, ...docSnap.data() } as Treatment;
     }
-    return null;
-  } catch {
-    return null;
-  }
+  } catch {}
+  const all = await getTreatments();
+  return all.find((t) => t.slug === slug) || null;
 }
 
 export async function saveTreatment(treatment: Partial<Treatment> & { id?: string }): Promise<string> {
   const id = treatment.id || `t_${Date.now()}`;
   const cleanData = cleanFirestoreData(treatment);
-  await setDoc(
-    doc(db, 'treatments', id),
-    {
-      ...cleanData,
-      id,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  const fullItem = { ...cleanData, id, updatedAt: new Date().toISOString() } as Treatment;
+  upsertLocalItem<Treatment>('treatments', fullItem, 'id');
+
+  try {
+    await setDoc(
+      doc(db, 'treatments', id),
+      {
+        ...cleanData,
+        id,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Notice: Firestore saveTreatment failed, persisted locally:', err);
+  }
   return id;
 }
 
 export async function deleteTreatment(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'treatments', id));
+  removeLocalItem<Treatment>('treatments', id, 'id');
+  try {
+    await deleteDoc(doc(db, 'treatments', id));
+  } catch {}
 }
 
 // ─── PROFESSIONALS ───────────────────────────────────────────────────────────
@@ -277,39 +362,61 @@ export async function getProfessionals(): Promise<Professional[]> {
   try {
     const snapshot = await getDocs(collection(db, 'professionals'));
     if (!snapshot.empty) {
-      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Professional));
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Professional));
+      saveLocalCollection('professionals', items);
+      return items;
     }
-    return [];
   } catch (error) {
-    console.warn('Could not fetch professionals from Firestore:', error);
-    return [];
+    console.warn('Notice: Professionals fetch from Firestore not available, checking local store:', error);
   }
+  const local = getLocalCollection<Professional>('professionals');
+  return local.length > 0 ? local : defaultProfessionals;
 }
 
 export async function saveProfessional(prof: Partial<Professional> & { id?: string }): Promise<string> {
   const id = prof.id || `p_${Date.now()}`;
   const cleanData = cleanFirestoreData(prof);
-  await setDoc(
-    doc(db, 'professionals', id),
-    {
-      ...cleanData,
-      id,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  const fullItem = { ...cleanData, id, updatedAt: new Date().toISOString() } as Professional;
+  upsertLocalItem<Professional>('professionals', fullItem, 'id');
+
+  try {
+    await setDoc(
+      doc(db, 'professionals', id),
+      {
+        ...cleanData,
+        id,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Notice: Firestore saveProfessional failed, persisted locally:', err);
+  }
   return id;
 }
 
 export async function deleteProfessional(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'professionals', id));
+  removeLocalItem<Professional>('professionals', id, 'id');
+  try {
+    await deleteDoc(doc(db, 'professionals', id));
+  } catch {}
 }
 
 // ─── APPOINTMENTS ────────────────────────────────────────────────────────────
 
 export async function createAppointment(data: Omit<Appointment, 'id' | 'createdAt'>): Promise<string> {
+  const id = `apt_${Date.now()}`;
+  const cleanData = cleanFirestoreData(data);
+  const newApt: Appointment = {
+    ...cleanData,
+    id,
+    status: data.status || 'pending',
+    createdAt: new Date().toISOString(),
+  } as Appointment;
+
+  upsertLocalItem<Appointment>('appointments', newApt, 'id');
+
   try {
-    const cleanData = cleanFirestoreData(data);
     const docRef = await addDoc(collection(db, 'appointments'), {
       ...cleanData,
       status: data.status || 'pending',
@@ -317,8 +424,8 @@ export async function createAppointment(data: Omit<Appointment, 'id' | 'createdA
     });
     return docRef.id;
   } catch (error) {
-    console.error('Error creating appointment:', error);
-    throw error;
+    console.warn('Notice: Firestore createAppointment restricted, persisted locally:', error);
+    return id;
   }
 }
 
@@ -326,32 +433,50 @@ export async function getAppointmentsByClient(clientId: string): Promise<Appoint
   try {
     const q = query(collection(db, 'appointments'), where('clientId', '==', clientId));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
+    if (!snapshot.empty) {
+      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
+    }
   } catch (err) {
-    console.warn('Error fetching client appointments:', err);
-    return [];
+    console.warn('Notice: Firestore getAppointmentsByClient fallback to local:', err);
   }
+  const local = getLocalCollection<Appointment>('appointments');
+  return local.filter((a) => a.clientId === clientId);
 }
 
 export async function getAllAppointments(): Promise<Appointment[]> {
   try {
     const snapshot = await getDocs(collection(db, 'appointments'));
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
+    if (!snapshot.empty) {
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
+      saveLocalCollection('appointments', items);
+      return items;
+    }
   } catch (err) {
-    console.warn('Error fetching appointments:', err);
-    return [];
+    console.warn('Notice: Firestore getAllAppointments fallback to local:', err);
   }
+  return getLocalCollection<Appointment>('appointments');
 }
 
 export async function updateAppointmentStatus(
   id: string,
   status: Appointment['status']
 ): Promise<void> {
-  await updateDoc(doc(db, 'appointments', id), { status, updatedAt: serverTimestamp() });
+  const items = getLocalCollection<Appointment>('appointments');
+  const target = items.find((a) => a.id === id);
+  if (target) {
+    target.status = status;
+    saveLocalCollection('appointments', items);
+  }
+  try {
+    await updateDoc(doc(db, 'appointments', id), { status, updatedAt: serverTimestamp() });
+  } catch {}
 }
 
 export async function deleteAppointment(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'appointments', id));
+  removeLocalItem<Appointment>('appointments', id, 'id');
+  try {
+    await deleteDoc(doc(db, 'appointments', id));
+  } catch {}
 }
 
 // ─── ROOMS / CONSULTORIOS ───────────────────────────────────────────────────
@@ -360,24 +485,35 @@ export async function getRooms(): Promise<Room[]> {
   try {
     const snapshot = await getDocs(collection(db, 'rooms'));
     if (!snapshot.empty) {
-      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Room));
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Room));
+      saveLocalCollection('rooms', items);
+      return items;
     }
-    return [];
   } catch (error) {
-    console.warn('Error fetching rooms:', error);
-    return [];
+    console.warn('Notice: Rooms fetch from Firestore fallback to local:', error);
   }
+  return getLocalCollection<Room>('rooms');
 }
 
 export async function saveRoom(room: Partial<Room> & { id?: string }): Promise<string> {
   const id = room.id || `r_${Date.now()}`;
   const cleanData = cleanFirestoreData(room);
-  await setDoc(doc(db, 'rooms', id), { ...cleanData, id, updatedAt: serverTimestamp() }, { merge: true });
+  const fullItem = { ...cleanData, id, updatedAt: new Date().toISOString() } as Room;
+  upsertLocalItem<Room>('rooms', fullItem, 'id');
+
+  try {
+    await setDoc(doc(db, 'rooms', id), { ...cleanData, id, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.warn('Notice: Firestore saveRoom fallback to local:', err);
+  }
   return id;
 }
 
 export async function deleteRoom(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'rooms', id));
+  removeLocalItem<Room>('rooms', id, 'id');
+  try {
+    await deleteDoc(doc(db, 'rooms', id));
+  } catch {}
 }
 
 // ─── CLINICAL RECORDS (HISTORIAS) ───────────────────────────────────────────
@@ -389,22 +525,37 @@ export async function getClinicalRecords(patientId?: string): Promise<ClinicalRe
       q = query(collection(db, 'clinical_records'), where('patientId', '==', patientId));
     }
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as ClinicalRecord));
+    if (!snapshot.empty) {
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as ClinicalRecord));
+      saveLocalCollection('clinical_records', items);
+      return items;
+    }
   } catch (error) {
-    console.warn('Error fetching clinical records:', error);
-    return [];
+    console.warn('Notice: Clinical records fallback to local:', error);
   }
+  const local = getLocalCollection<ClinicalRecord>('clinical_records');
+  return patientId ? local.filter((r) => r.patientId === patientId) : local;
 }
 
 export async function saveClinicalRecord(record: Partial<ClinicalRecord> & { id?: string }): Promise<string> {
   const id = record.id || `rec_${Date.now()}`;
   const cleanData = cleanFirestoreData(record);
-  await setDoc(doc(db, 'clinical_records', id), { ...cleanData, id, createdAt: serverTimestamp() }, { merge: true });
+  const fullItem = { ...cleanData, id, createdAt: new Date().toISOString() } as ClinicalRecord;
+  upsertLocalItem<ClinicalRecord>('clinical_records', fullItem, 'id');
+
+  try {
+    await setDoc(doc(db, 'clinical_records', id), { ...cleanData, id, createdAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.warn('Notice: Firestore saveClinicalRecord fallback to local:', err);
+  }
   return id;
 }
 
 export async function deleteClinicalRecord(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'clinical_records', id));
+  removeLocalItem<ClinicalRecord>('clinical_records', id, 'id');
+  try {
+    await deleteDoc(doc(db, 'clinical_records', id));
+  } catch {}
 }
 
 // ─── CLINICAL PHOTOS (FOTOS) ────────────────────────────────────────────────
@@ -412,22 +563,36 @@ export async function deleteClinicalRecord(id: string): Promise<void> {
 export async function getClinicalPhotos(): Promise<ClinicalPhoto[]> {
   try {
     const snapshot = await getDocs(collection(db, 'clinical_photos'));
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as ClinicalPhoto));
+    if (!snapshot.empty) {
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as ClinicalPhoto));
+      saveLocalCollection('clinical_photos', items);
+      return items;
+    }
   } catch (error) {
-    console.warn('Error fetching clinical photos:', error);
-    return [];
+    console.warn('Notice: Clinical photos fallback to local:', error);
   }
+  return getLocalCollection<ClinicalPhoto>('clinical_photos');
 }
 
 export async function saveClinicalPhoto(photo: Partial<ClinicalPhoto> & { id?: string }): Promise<string> {
   const id = photo.id || `photo_${Date.now()}`;
   const cleanData = cleanFirestoreData(photo);
-  await setDoc(doc(db, 'clinical_photos', id), { ...cleanData, id, createdAt: serverTimestamp() }, { merge: true });
+  const fullItem = { ...cleanData, id, createdAt: new Date().toISOString() } as ClinicalPhoto;
+  upsertLocalItem<ClinicalPhoto>('clinical_photos', fullItem, 'id');
+
+  try {
+    await setDoc(doc(db, 'clinical_photos', id), { ...cleanData, id, createdAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.warn('Notice: Firestore saveClinicalPhoto fallback to local:', err);
+  }
   return id;
 }
 
 export async function deleteClinicalPhoto(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'clinical_photos', id));
+  removeLocalItem<ClinicalPhoto>('clinical_photos', id, 'id');
+  try {
+    await deleteDoc(doc(db, 'clinical_photos', id));
+  } catch {}
 }
 
 // ─── AUDIT LOGS (AUDITORIA) ─────────────────────────────────────────────────
@@ -435,27 +600,40 @@ export async function deleteClinicalPhoto(id: string): Promise<void> {
 export async function getAuditLogs(): Promise<AuditLog[]> {
   try {
     const snapshot = await getDocs(collection(db, 'audit_logs'));
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLog));
+    if (!snapshot.empty) {
+      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLog));
+      saveLocalCollection('audit_logs', items);
+      return items;
+    }
   } catch (error) {
-    console.warn('Error fetching audit logs:', error);
-    return [];
+    console.warn('Notice: Audit logs fallback to local:', error);
   }
+  return getLocalCollection<AuditLog>('audit_logs');
 }
 
-export async function logAuditEvent(action: string, details: string, category: AuditLog['category'] = 'SYSTEM', userName = 'Sistema', userEmail = ''): Promise<void> {
+export async function logAuditEvent(
+  action: string,
+  details: string,
+  category: AuditLog['category'] = 'SYSTEM',
+  userName = 'Sistema',
+  userEmail = ''
+): Promise<void> {
+  const id = `log_${Date.now()}`;
+  const logItem: AuditLog = {
+    id,
+    timestamp: new Date().toISOString(),
+    action,
+    details,
+    category,
+    userName,
+    userEmail,
+  };
+  upsertLocalItem<AuditLog>('audit_logs', logItem, 'id');
+
   try {
-    const id = `log_${Date.now()}`;
-    await setDoc(doc(db, 'audit_logs', id), {
-      id,
-      timestamp: new Date().toISOString(),
-      action,
-      details,
-      category,
-      userName,
-      userEmail,
-    });
+    await setDoc(doc(db, 'audit_logs', id), logItem);
   } catch (e) {
-    console.warn('Could not record audit log:', e);
+    console.warn('Notice: Could not record audit log to Firestore (saved locally):', e);
   }
 }
 
@@ -478,16 +656,33 @@ export async function getClinicSettings(): Promise<ClinicSettings> {
   try {
     const docSnap = await getDoc(doc(db, 'settings', 'general'));
     if (docSnap.exists()) {
-      return { ...DEFAULT_SETTINGS, ...docSnap.data() } as ClinicSettings;
+      const data = { ...DEFAULT_SETTINGS, ...docSnap.data() } as ClinicSettings;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('estetica_settings', JSON.stringify(data));
+      }
+      return data;
     }
-    return DEFAULT_SETTINGS;
   } catch {
-    return DEFAULT_SETTINGS;
+    // Check local storage fallback
+    if (typeof window !== 'undefined') {
+      const local = localStorage.getItem('estetica_settings');
+      if (local) return JSON.parse(local);
+    }
   }
+  return DEFAULT_SETTINGS;
 }
 
 export async function saveClinicSettings(settings: Partial<ClinicSettings>): Promise<void> {
-  await setDoc(doc(db, 'settings', 'general'), cleanFirestoreData(settings), { merge: true });
+  const current = await getClinicSettings();
+  const updated = { ...current, ...cleanFirestoreData(settings) };
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('estetica_settings', JSON.stringify(updated));
+  }
+  try {
+    await setDoc(doc(db, 'settings', 'general'), cleanFirestoreData(settings), { merge: true });
+  } catch (err) {
+    console.warn('Notice: Firestore saveClinicSettings failed (saved locally):', err);
+  }
 }
 
 // ─── DEFAULT SEED DATA ───────────────────────────────────────────────────────

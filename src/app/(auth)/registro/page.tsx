@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, UserPlus, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { isValidArgentinePhone, isValidEmail } from '@/lib/validation';
 import './auth.css';
 
 export default function RegisterPage() {
@@ -43,7 +44,14 @@ export default function RegisterPage() {
     const newErrors: Record<string, string> = {};
     if (!formData.firstName.trim()) newErrors.firstName = 'El nombre es obligatorio';
     if (!formData.lastName.trim()) newErrors.lastName = 'El apellido es obligatorio';
-    if (!formData.email.trim()) newErrors.email = 'El email es obligatorio';
+    if (!formData.email.trim()) {
+      newErrors.email = 'El email es obligatorio';
+    } else if (!isValidEmail(formData.email)) {
+      newErrors.email = 'Ingrese un formato de correo electrónico válido';
+    }
+    if (formData.phone.trim() && !isValidArgentinePhone(formData.phone)) {
+      newErrors.phone = 'Teléfono inválido para Argentina (ej: 11 2345-6789 o +54 9 11 2345-6789)';
+    }
     if (formData.password.length < 6) newErrors.password = 'La contraseña debe tener al menos 6 caracteres';
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Las contraseñas no coinciden';
