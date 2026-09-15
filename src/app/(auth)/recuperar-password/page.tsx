@@ -44,11 +44,12 @@ export default function RecuperarPasswordPage() {
             <Image
               src="/images/logo.png"
               alt="MOON Golden Beauty"
-              width={64}
-              height={64}
+              width={140}
+              height={140}
               className="auth-page__brand-logo"
+              priority
             />
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="auth-page__brand-titles">
               <span className="auth-page__brand-text">MOON</span>
               <span className="auth-page__brand-accent">Golden Beauty</span>
             </div>
