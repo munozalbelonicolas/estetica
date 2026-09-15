@@ -99,6 +99,23 @@ export default function ProfesionalLayout({
               >
                 <Users size={14} /> Fichas de Pacientes
               </Link>
+              <Link
+                href="/profesional/reportes"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-secondary)',
+                  textDecoration: 'none',
+                }}
+              >
+                <Clock size={14} /> Mis Estadísticas
+              </Link>
             </nav>
           </div>
 

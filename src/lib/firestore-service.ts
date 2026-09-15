@@ -83,6 +83,8 @@ export interface Appointment {
   treatmentDuration: number;
   professionalId: string;
   professionalName: string;
+  roomId?: string;
+  roomName?: string;
   date: string; // YYYY-MM-DD
   time: string; // HH:mm
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
