@@ -70,7 +70,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: `${user.firstName} ${user.lastName}`,
           firstName: user.firstName,
           lastName: user.lastName,
-          roles: user.userRoles.map((ur) => ur.role.name),
+          roles: (user.userRoles || []).map((ur: any) => ur.role?.name || ''),
         } as any;
       },
     }),

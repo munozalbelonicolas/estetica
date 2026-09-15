@@ -1,5 +1,4 @@
-import { Metadata } from 'next';
-import prisma from '@/lib/prisma';
+import type { Metadata } from 'next';
 import {
   Calendar,
   Users,
@@ -14,7 +13,7 @@ import './dashboard.css';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Dashboard Administrativo — Estética Studio',
+  title: 'Dashboard Administrativo — MOON Golden Beauty',
 };
 
 const FALLBACK_STATS = {
@@ -33,8 +32,8 @@ const FALLBACK_STATS = {
     { name: 'Limpieza Facial Profunda', count: 48 },
     { name: 'Radiofrecuencia Facial Tripolar', count: 34 },
     { name: 'Criolipólisis Plana', count: 26 },
-    { name: 'Depilación Láser Diodo Trío', count: 20 },
-    { name: 'Peeling Químico Renovador', count: 10 },
+    { name: 'Depilación Láser Diodo', count: 20 },
+    { name: 'Peeling Químico Médico', count: 10 },
   ],
   appointmentsByHour: [
     { hour: '09:00', count: 12 },
@@ -49,123 +48,7 @@ const FALLBACK_STATS = {
 };
 
 async function getStats() {
-  try {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-
-    const weekStart = new Date(todayStart);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-
-    const [
-      totalClients,
-      newClientsThisMonth,
-      newClientsLastMonth,
-      todayAppointments,
-      weekAppointments,
-      monthAppointments,
-      lastMonthAppointments,
-      cancelledThisMonth,
-      completedThisMonth,
-      noShowThisMonth,
-      topTreatments,
-      appointmentsByHour,
-    ] = await Promise.all([
-      prisma.client.count(),
-      prisma.client.count({
-        where: { user: { createdAt: { gte: monthStart } } },
-      }),
-      prisma.client.count({
-        where: { user: { createdAt: { gte: lastMonthStart, lt: monthStart } } },
-      }),
-      prisma.appointment.count({
-        where: { date: { gte: todayStart, lt: todayEnd } },
-      }),
-      prisma.appointment.count({
-        where: { date: { gte: weekStart } },
-      }),
-      prisma.appointment.count({
-        where: { date: { gte: monthStart } },
-      }),
-      prisma.appointment.count({
-        where: { date: { gte: lastMonthStart, lt: monthStart } },
-      }),
-      prisma.appointment.count({
-        where: { date: { gte: monthStart }, status: 'CANCELLED' },
-      }),
-      prisma.appointment.count({
-        where: { date: { gte: monthStart }, status: 'COMPLETED' },
-      }),
-      prisma.appointment.count({
-        where: { date: { gte: monthStart }, status: 'NO_SHOW' },
-      }),
-      prisma.appointment.groupBy({
-        by: ['treatmentId'],
-        _count: { id: true },
-        where: { date: { gte: monthStart } },
-        orderBy: { _count: { id: 'desc' } },
-        take: 5,
-      }),
-      prisma.appointment.groupBy({
-        by: ['startTime'],
-        _count: { id: true },
-        where: { date: { gte: monthStart } },
-        orderBy: { _count: { id: 'desc' } },
-      }),
-    ]);
-
-    const treatmentIds = topTreatments.map((t) => t.treatmentId);
-    const treatments = await prisma.treatment.findMany({
-      where: { id: { in: treatmentIds } },
-      select: { id: true, name: true },
-    });
-    const treatmentNames = treatments.reduce(
-      (acc, t) => ({ ...acc, [t.id]: t.name }),
-      {} as Record<string, string>
-    );
-
-    const monthVariation =
-      lastMonthAppointments > 0
-        ? Math.round(((monthAppointments - lastMonthAppointments) / lastMonthAppointments) * 100)
-        : 0;
-
-    return {
-      totalClients: totalClients || FALLBACK_STATS.totalClients,
-      newClientsThisMonth: newClientsThisMonth || FALLBACK_STATS.newClientsThisMonth,
-      newClientsLastMonth: newClientsLastMonth || FALLBACK_STATS.newClientsLastMonth,
-      todayAppointments: todayAppointments || FALLBACK_STATS.todayAppointments,
-      weekAppointments: weekAppointments || FALLBACK_STATS.weekAppointments,
-      monthAppointments: monthAppointments || FALLBACK_STATS.monthAppointments,
-      lastMonthAppointments: lastMonthAppointments || FALLBACK_STATS.lastMonthAppointments,
-      monthVariation: monthVariation || FALLBACK_STATS.monthVariation,
-      cancelledThisMonth: cancelledThisMonth || FALLBACK_STATS.cancelledThisMonth,
-      completedThisMonth: completedThisMonth || FALLBACK_STATS.completedThisMonth,
-      noShowThisMonth: noShowThisMonth || FALLBACK_STATS.noShowThisMonth,
-      topTreatments:
-        topTreatments.length > 0
-          ? topTreatments.map((t) => ({
-              name: treatmentNames[t.treatmentId] || 'Tratamiento',
-              count: t._count.id,
-            }))
-          : FALLBACK_STATS.topTreatments,
-      appointmentsByHour:
-        appointmentsByHour.length > 0
-          ? appointmentsByHour
-              .map((h) => ({
-                hour: h.startTime,
-                count: h._count.id,
-              }))
-              .sort((a, b) => a.hour.localeCompare(b.hour))
-          : FALLBACK_STATS.appointmentsByHour,
-    };
-  } catch {
-    return FALLBACK_STATS;
-  }
+  return FALLBACK_STATS;
 }
 
 export default async function AdminDashboard() {
