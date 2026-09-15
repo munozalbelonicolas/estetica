@@ -585,29 +585,88 @@
 }
 
 @media (max-width: 640px) {
+  .hero {
+    min-height: 100svh;
+    padding-top: calc(var(--navbar-height) + 1rem);
+    padding-bottom: 2rem;
+  }
+
+  .hero__overlay {
+    background: linear-gradient(
+      to bottom,
+      rgba(253, 251, 247, 0.95) 0%,
+      rgba(253, 251, 247, 0.90) 60%,
+      rgba(253, 251, 247, 0.75) 100%
+    );
+  }
+
   .hero__actions {
     flex-direction: column;
     align-items: stretch;
+    width: 100%;
+    gap: var(--space-3);
+  }
+
+  .hero__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .hero__scroll-hint {
+    display: none;
   }
 
   .benefits-bar__grid {
     grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .about-preview__images {
+    width: 100%;
+    max-width: 320px;
+    aspect-ratio: 1/1;
+  }
+
+  .about-preview__experience {
+    bottom: 5%;
+    left: 5%;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .about-preview__exp-number {
+    font-size: var(--text-2xl);
   }
 
   .treatments-grid {
     grid-template-columns: 1fr;
+    gap: var(--space-4);
   }
 
   .team-grid {
     grid-template-columns: 1fr;
+    gap: var(--space-6);
   }
 
   .testimonials-grid {
     grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .cta-section {
+    padding: var(--space-16) 0;
+  }
+
+  .cta-section__actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .cta-section__actions .btn {
+    width: 100%;
   }
 
   .team-card__image {
-    width: 140px;
-    height: 140px;
+    width: 130px;
+    height: 130px;
   }
 }

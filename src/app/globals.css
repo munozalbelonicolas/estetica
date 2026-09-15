@@ -936,17 +936,27 @@ select.form-input {
 .toast--warning { border-left: 4px solid var(--status-pending); }
 .toast--info { border-left: 4px solid var(--accent-teal); }
 
-/* ─── RESPONSIVE ─────────────────────────────────────────── */
+/* ─── RESPONSIVE & MOBILE OPTIMIZATIONS ─────────────────────── */
 
 @media (max-width: 768px) {
   :root {
     --text-5xl: 2.25rem;
     --text-6xl: 2.75rem;
     --text-7xl: 3.25rem;
+    --space-20: 3rem;
+    --space-24: 3.5rem;
+    --navbar-height: 64px;
+  }
+
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+    -webkit-overflow-scrolling: touch;
   }
 
   .container {
     padding: 0 var(--space-4);
+    width: 100%;
   }
 
   .section {
@@ -959,4 +969,45 @@ select.form-input {
 
   h1 { font-size: var(--text-3xl); }
   h2 { font-size: var(--text-2xl); }
+  h3 { font-size: var(--text-xl); }
+
+  /* Ensure inputs don't trigger iOS Safari auto-zoom */
+  input, select, textarea, .form-input {
+    font-size: 16px !important;
+    min-height: 44px;
+  }
+
+  /* Touch-friendly buttons */
+  .btn {
+    min-height: 44px;
+    padding: var(--space-3) var(--space-5);
+  }
+
+  /* Modals full width on mobile */
+  .modal {
+    max-width: 95vw !important;
+    margin: var(--space-2);
+    padding: var(--space-4);
+    border-radius: var(--radius-xl);
+  }
+
+  /* Tables horizontal touch scrolling */
+  .table-wrapper, [style*="overflowX: auto"], [style*="overflow-x: auto"] {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero {
+    min-height: 90svh;
+  }
+
+  .hero__title {
+    font-size: 2.2rem;
+  }
+
+  .btn--lg {
+    padding: var(--space-3) var(--space-6);
+    font-size: var(--text-sm);
+  }
 }
