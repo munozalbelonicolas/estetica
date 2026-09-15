@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Calendar,
   Clock,
@@ -11,114 +11,97 @@ import {
   PlayCircle,
   Filter,
   Search,
+  Plus,
 } from 'lucide-react';
-
-interface AdminAppointment {
-  id: string;
-  clientName: string;
-  clientPhone: string;
-  treatmentName: string;
-  professionalName: string;
-  roomName: string;
-  date: string;
-  time: string;
-  price: number;
-  status: 'PENDING' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-}
-
-const DEMO_MASTER_APPOINTMENTS: AdminAppointment[] = [
-  {
-    id: 'a-1',
-    clientName: 'María Eugenia González',
-    clientPhone: '11 3456-7890',
-    treatmentName: 'Limpieza Facial Profunda',
-    professionalName: 'Valentina Rossi',
-    roomName: 'Consultorio 1 - Facial',
-    date: '2026-09-14',
-    time: '09:00 - 10:00',
-    price: 32000,
-    status: 'COMPLETED',
-  },
-  {
-    id: 'a-2',
-    clientName: 'Luciana Beltrán',
-    clientPhone: '11 9876-5432',
-    treatmentName: 'Radiofrecuencia Facial Tripolar',
-    professionalName: 'Valentina Rossi',
-    roomName: 'Consultorio 1 - Facial',
-    date: '2026-09-14',
-    time: '10:30 - 11:15',
-    price: 38000,
-    status: 'IN_PROGRESS',
-  },
-  {
-    id: 'a-3',
-    clientName: 'Sofía Álvarez',
-    clientPhone: '11 4455-6677',
-    treatmentName: 'Criolipólisis Plana',
-    professionalName: 'Camila Méndez',
-    roomName: 'Consultorio 2 - Corporal',
-    date: '2026-09-14',
-    time: '11:00 - 12:00',
-    price: 55000,
-    status: 'CONFIRMED',
-  },
-  {
-    id: 'a-4',
-    clientName: 'Carla Domínguez',
-    clientPhone: '11 2233-4455',
-    treatmentName: 'Depilación Láser Diodo Trío',
-    professionalName: 'Lucía Fernández',
-    roomName: 'Consultorio 3 - Láser',
-    date: '2026-09-14',
-    time: '14:00 - 14:40',
-    price: 26000,
-    status: 'CONFIRMED',
-  },
-  {
-    id: 'a-5',
-    clientName: 'Julieta Romero',
-    clientPhone: '11 7788-9900',
-    treatmentName: 'Peeling Químico Renovador',
-    professionalName: 'Valentina Rossi',
-    roomName: 'Consultorio 1 - Facial',
-    date: '2026-09-14',
-    time: '16:00 - 16:45',
-    price: 35000,
-    status: 'PENDING',
-  },
-  {
-    id: 'a-6',
-    clientName: 'Florencia Benítez',
-    clientPhone: '11 5566-7788',
-    treatmentName: 'Masaje Descontracturante',
-    professionalName: 'Camila Méndez',
-    roomName: 'Consultorio 2 - Corporal',
-    date: '2026-09-15',
-    time: '11:00 - 11:50',
-    price: 28000,
-    status: 'CONFIRMED',
-  },
-];
+import { getAllAppointments, updateAppointmentStatus, createAppointment, Appointment } from '@/lib/firestore-service';
 
 export default function AdminAgendaPage() {
-  const [appointments, setAppointments] = useState<AdminAppointment[]>(DEMO_MASTER_APPOINTMENTS);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
 
-  const updateStatus = (id: string, newStatus: AdminAppointment['status']) => {
-    setAppointments((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status: newStatus } : a))
-    );
+  const [newAppt, setNewAppt] = useState({
+    clientName: '',
+    clientPhone: '',
+    clientEmail: '',
+    treatmentName: '',
+    treatmentPrice: 35000,
+    professionalName: 'Lic. Melanie Mancin',
+    date: new Date().toISOString().split('T')[0],
+    time: '10:00',
+  });
+
+  const loadAppointments = async () => {
+    setLoading(true);
+    try {
+      const data = await getAllAppointments();
+      setAppointments(data);
+    } catch (e) {
+      console.error('Error fetching appointments:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAppointments();
+  }, []);
+
+  const handleUpdateStatus = async (id: string, newStatus: Appointment['status']) => {
+    try {
+      await updateAppointmentStatus(id, newStatus);
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: newStatus } : a))
+      );
+    } catch (e) {
+      alert('Error actualizando estado en Firestore');
+    }
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await createAppointment({
+        clientId: `cli_${Date.now()}`,
+        clientName: newAppt.clientName,
+        clientPhone: newAppt.clientPhone,
+        clientEmail: newAppt.clientEmail || 'cliente@ejemplo.com',
+        treatmentId: `t_${Date.now()}`,
+        treatmentName: newAppt.treatmentName,
+        treatmentPrice: Number(newAppt.treatmentPrice),
+        treatmentDuration: 45,
+        professionalId: `prof_${Date.now()}`,
+        professionalName: newAppt.professionalName,
+        date: newAppt.date,
+        time: newAppt.time,
+        status: 'confirmed',
+      });
+      setShowModal(false);
+      setNewAppt({
+        clientName: '',
+        clientPhone: '',
+        clientEmail: '',
+        treatmentName: '',
+        treatmentPrice: 35000,
+        professionalName: 'Lic. Melanie Mancin',
+        date: new Date().toISOString().split('T')[0],
+        time: '10:00',
+      });
+      await loadAppointments();
+    } catch (err) {
+      alert('Error al agendar turno');
+    }
   };
 
   const filtered = appointments.filter((a) => {
     if (statusFilter !== 'todos' && a.status !== statusFilter) return false;
     if (
       search &&
-      !a.clientName.toLowerCase().includes(search.toLowerCase()) &&
-      !a.treatmentName.toLowerCase().includes(search.toLowerCase()) &&
-      !a.professionalName.toLowerCase().includes(search.toLowerCase())
+      !a.clientName?.toLowerCase().includes(search.toLowerCase()) &&
+      !a.treatmentName?.toLowerCase().includes(search.toLowerCase()) &&
+      !a.professionalName?.toLowerCase().includes(search.toLowerCase())
     ) {
       return false;
     }
@@ -127,13 +110,18 @@ export default function AdminAgendaPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      <div>
-        <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-2xl)' }}>
-          Agenda Global & Control de Turnos
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
-          Supervisión centralizada de turnos, profesionales asignadas y estados de atención.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-2xl)' }}>
+            Agenda Global & Control de Turnos
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
+            Supervisión centralizada en base de datos de turnos y estados de atención.
+          </p>
+        </div>
+        <button onClick={() => setShowModal(true)} className="btn btn--primary">
+          <Plus size={16} /> Agendar Turno Directo
+        </button>
       </div>
 
       <div
@@ -167,67 +155,193 @@ export default function AdminAgendaPage() {
               style={{ width: 'auto', fontSize: 'var(--text-xs)' }}
             >
               <option value="todos">Todos los Estados</option>
-              <option value="PENDING">Pendientes</option>
-              <option value="CONFIRMED">Confirmados</option>
-              <option value="IN_PROGRESS">En Atención</option>
-              <option value="COMPLETED">Completados</option>
-              <option value="CANCELLED">Cancelados</option>
+              <option value="pending">Pendientes</option>
+              <option value="confirmed">Confirmados</option>
+              <option value="completed">Completados</option>
+              <option value="cancelled">Cancelados</option>
             </select>
           </div>
         </div>
 
-        {/* Table */}
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 'var(--text-sm)' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase' }}>
-                <th style={{ padding: '12px 16px' }}>Fecha / Horario</th>
-                <th style={{ padding: '12px 16px' }}>Paciente</th>
-                <th style={{ padding: '12px 16px' }}>Tratamiento</th>
-                <th style={{ padding: '12px 16px' }}>Profesional & Box</th>
-                <th style={{ padding: '12px 16px' }}>Arancel</th>
-                <th style={{ padding: '12px 16px' }}>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((a) => (
-                <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td style={{ padding: '14px 16px' }}>
-                    <div style={{ fontWeight: 600 }}>{a.time}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{a.date}</div>
-                  </td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <div style={{ fontWeight: 600 }}>{a.clientName}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{a.clientPhone}</div>
-                  </td>
-                  <td style={{ padding: '14px 16px', fontWeight: 500 }}>{a.treatmentName}</td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <div>{a.professionalName}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{a.roomName}</div>
-                  </td>
-                  <td style={{ padding: '14px 16px', fontWeight: 600, color: 'var(--accent-gold)' }}>
-                    ${a.price.toLocaleString('es-AR')}
-                  </td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <select
-                      value={a.status}
-                      onChange={(e) => updateStatus(a.id, e.target.value as AdminAppointment['status'])}
-                      className="form-input"
-                      style={{ padding: '4px 8px', fontSize: 'var(--text-xs)', width: 'auto', fontWeight: 600 }}
-                    >
-                      <option value="PENDING">Pendiente</option>
-                      <option value="CONFIRMED">Confirmado</option>
-                      <option value="IN_PROGRESS">En Atención</option>
-                      <option value="COMPLETED">Completado</option>
-                      <option value="CANCELLED">Cancelado</option>
-                    </select>
-                  </td>
+        {loading ? (
+          <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-muted)' }}>
+            Cargando turnos desde la base de datos...
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
+            <Calendar size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 16px' }} />
+            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 8 }}>
+              No hay turnos registrados
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 20 }}>
+              Agenda un turno de prueba para verificar el flujo en la base de datos.
+            </p>
+            <button onClick={() => setShowModal(true)} className="btn btn--primary">
+              <Plus size={16} /> Agendar Primer Turno
+            </button>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 'var(--text-sm)' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '12px 16px' }}>Fecha / Horario</th>
+                  <th style={{ padding: '12px 16px' }}>Paciente</th>
+                  <th style={{ padding: '12px 16px' }}>Tratamiento</th>
+                  <th style={{ padding: '12px 16px' }}>Profesional</th>
+                  <th style={{ padding: '12px 16px' }}>Arancel</th>
+                  <th style={{ padding: '12px 16px' }}>Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtered.map((a) => (
+                  <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ fontWeight: 600 }}>{a.time} hs</div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{a.date}</div>
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ fontWeight: 600 }}>{a.clientName}</div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{a.clientPhone || a.clientEmail}</div>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontWeight: 500 }}>{a.treatmentName}</td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div>{a.professionalName}</div>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontWeight: 600, color: 'var(--accent-gold)' }}>
+                      ${a.treatmentPrice?.toLocaleString('es-AR')}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <select
+                        value={a.status}
+                        onChange={(e) => handleUpdateStatus(a.id, e.target.value as Appointment['status'])}
+                        className="form-input"
+                        style={{ padding: '4px 8px', fontSize: 'var(--text-xs)', width: 'auto', fontWeight: 600 }}
+                      >
+                        <option value="pending">Pendiente</option>
+                        <option value="confirmed">Confirmado</option>
+                        <option value="completed">Completado</option>
+                        <option value="cancelled">Cancelado</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {showModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-2xl)',
+              padding: 'var(--space-8)',
+              maxWidth: 480,
+              width: '100%',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xl)', marginBottom: 'var(--space-4)' }}>
+              Agendar Turno
+            </h3>
+            <form onSubmit={handleCreate}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="mb-3">
+                <div className="form-group">
+                  <label className="form-label">Paciente *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nombre y Apellido"
+                    value={newAppt.clientName}
+                    onChange={(e) => setNewAppt({ ...newAppt, clientName: e.target.value })}
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Teléfono</label>
+                  <input
+                    type="text"
+                    placeholder="11 2345-6789"
+                    value={newAppt.clientPhone}
+                    onChange={(e) => setNewAppt({ ...newAppt, clientPhone: e.target.value })}
+                    className="form-input"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group mb-3">
+                <label className="form-label">Tratamiento *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Limpieza Facial Profunda"
+                  value={newAppt.treatmentName}
+                  onChange={(e) => setNewAppt({ ...newAppt, treatmentName: e.target.value })}
+                  className="form-input"
+                />
+              </div>
+
+              <div className="form-group mb-3">
+                <label className="form-label">Profesional Asignada *</label>
+                <input
+                  type="text"
+                  required
+                  value={newAppt.professionalName}
+                  onChange={(e) => setNewAppt({ ...newAppt, professionalName: e.target.value })}
+                  className="form-input"
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="mb-4">
+                <div className="form-group">
+                  <label className="form-label">Fecha *</label>
+                  <input
+                    type="date"
+                    required
+                    value={newAppt.date}
+                    onChange={(e) => setNewAppt({ ...newAppt, date: e.target.value })}
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Horario *</label>
+                  <input
+                    type="time"
+                    required
+                    value={newAppt.time}
+                    onChange={(e) => setNewAppt({ ...newAppt, time: e.target.value })}
+                    className="form-input"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                <button type="button" onClick={() => setShowModal(false)} className="btn btn--secondary">
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn--primary">
+                  Guardar en Base de Datos
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,75 +1,87 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Sparkles,
   Plus,
-  Edit2,
-  Trash2,
   CheckCircle2,
   XCircle,
   Clock,
-  DollarSign,
   Search,
 } from 'lucide-react';
-import { defaultTreatments } from '@/lib/firestore-service';
-
-interface TreatmentRow {
-  id: string;
-  name: string;
-  category: string;
-  durationMinutes: number;
-  price: number;
-  showPrice: boolean;
-  isActive: boolean;
-}
+import { getTreatments, saveTreatment, Treatment } from '@/lib/firestore-service';
 
 export default function AdminTratamientosPage() {
-  const initialTreatments: TreatmentRow[] = defaultTreatments.map((t) => ({
-    id: t.id,
-    name: t.name,
-    category: t.category,
-    durationMinutes: t.duration,
-    price: t.price || 0,
-    showPrice: true,
-    isActive: t.isActive,
-  }));
-
-  const [treatments, setTreatments] = useState<TreatmentRow[]>(initialTreatments);
+  const [treatments, setTreatments] = useState<Treatment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [newTreatment, setNewTreatment] = useState({
     name: '',
-    category: 'Tratamientos Faciales',
-    durationMinutes: 45,
+    category: 'Facial',
+    duration: 45,
     price: 35000,
+    description: '',
   });
 
-  const toggleActive = (id: string) => {
-    setTreatments((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, isActive: !t.isActive } : t))
-    );
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const data = await getTreatments();
+      setTreatments(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const toggleActive = async (t: Treatment) => {
+    try {
+      await saveTreatment({
+        ...t,
+        isActive: !t.isActive,
+      });
+      await loadData();
+    } catch (err) {
+      alert('Error al actualizar estado');
+    }
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const created: TreatmentRow = {
-      id: `t-${Date.now()}`,
-      name: newTreatment.name,
-      category: newTreatment.category,
-      durationMinutes: Number(newTreatment.durationMinutes),
-      price: Number(newTreatment.price),
-      showPrice: true,
-      isActive: true,
-    };
-    setTreatments([created, ...treatments]);
-    setShowModal(false);
-    setNewTreatment({
-      name: '',
-      category: 'Tratamientos Faciales',
-      durationMinutes: 45,
-      price: 35000,
-    });
+    try {
+      const slug = newTreatment.name
+        .toLowerCase()
+        .replace(/[^\w ]+/g, '')
+        .replace(/ +/g, '-');
+
+      await saveTreatment({
+        name: newTreatment.name,
+        slug,
+        category: newTreatment.category,
+        duration: Number(newTreatment.duration),
+        price: Number(newTreatment.price),
+        description: newTreatment.description || newTreatment.name,
+        image: '/images/treatment-cleanse.jpg',
+        isActive: true,
+      });
+      setShowModal(false);
+      setNewTreatment({
+        name: '',
+        category: 'Facial',
+        duration: 45,
+        price: 35000,
+        description: '',
+      });
+      await loadData();
+    } catch (err) {
+      alert('Error al guardar en base de datos');
+    }
   };
 
   const filtered = treatments.filter(
@@ -86,7 +98,7 @@ export default function AdminTratamientosPage() {
             Gestión de Tratamientos
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
-            Configuración de servicios, duraciones de turno, categorías y aranceles.
+            Catálogo de servicios, duraciones de turno, categorías y aranceles en base de datos.
           </p>
         </div>
         <button onClick={() => setShowModal(true)} className="btn btn--primary">
@@ -114,70 +126,89 @@ export default function AdminTratamientosPage() {
           />
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 'var(--text-sm)' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase' }}>
-                <th style={{ padding: '12px 16px' }}>Tratamiento</th>
-                <th style={{ padding: '12px 16px' }}>Categoría</th>
-                <th style={{ padding: '12px 16px' }}>Duración</th>
-                <th style={{ padding: '12px 16px' }}>Precio</th>
-                <th style={{ padding: '12px 16px' }}>Estado</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((t) => (
-                <tr key={t.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td style={{ padding: '14px 16px', fontWeight: 600 }}>{t.name}</td>
-                  <td style={{ padding: '14px 16px', color: 'var(--text-secondary)' }}>{t.category}</td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <Clock size={14} style={{ color: 'var(--text-muted)' }} /> {t.durationMinutes} min
-                    </span>
-                  </td>
-                  <td style={{ padding: '14px 16px', fontWeight: 600, color: 'var(--accent-gold)' }}>
-                    ${t.price.toLocaleString('es-AR')}
-                  </td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <button
-                      onClick={() => toggleActive(t.id)}
-                      style={{
-                        border: 'none',
-                        background: 'transparent',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        color: t.isActive ? 'var(--status-confirmed)' : 'var(--text-muted)',
-                        fontWeight: 600,
-                        fontSize: 'var(--text-xs)',
-                      }}
-                    >
-                      {t.isActive ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
-                      {t.isActive ? 'Activo' : 'Pausado'}
-                    </button>
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                    <button
-                      onClick={() => toggleActive(t.id)}
-                      style={{
-                        padding: '6px 10px',
-                        border: '1px solid var(--border-light)',
-                        borderRadius: 'var(--radius-md)',
-                        background: 'var(--bg-secondary)',
-                        cursor: 'pointer',
-                        fontSize: 'var(--text-xs)',
-                      }}
-                    >
-                      {t.isActive ? 'Desactivar' : 'Activar'}
-                    </button>
-                  </td>
+        {loading ? (
+          <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-muted)' }}>
+            Cargando catálogo desde la base de datos...
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
+            <Sparkles size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 16px' }} />
+            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 8 }}>
+              No hay tratamientos en la base de datos
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 20 }}>
+              Crea los tratamientos y protocolos que ofrece tu centro de estética.
+            </p>
+            <button onClick={() => setShowModal(true)} className="btn btn--primary">
+              <Plus size={16} /> Crear Primer Tratamiento
+            </button>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 'var(--text-sm)' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '12px 16px' }}>Tratamiento</th>
+                  <th style={{ padding: '12px 16px' }}>Categoría</th>
+                  <th style={{ padding: '12px 16px' }}>Duración</th>
+                  <th style={{ padding: '12px 16px' }}>Precio</th>
+                  <th style={{ padding: '12px 16px' }}>Estado</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtered.map((t) => (
+                  <tr key={t.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '14px 16px', fontWeight: 600 }}>{t.name}</td>
+                    <td style={{ padding: '14px 16px', color: 'var(--text-secondary)' }}>{t.category}</td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Clock size={14} style={{ color: 'var(--text-muted)' }} /> {t.duration} min
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontWeight: 600, color: 'var(--accent-gold)' }}>
+                      ${t.price?.toLocaleString('es-AR')}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <button
+                        onClick={() => toggleActive(t)}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          color: t.isActive ? 'var(--status-confirmed)' : 'var(--text-muted)',
+                          fontWeight: 600,
+                          fontSize: 'var(--text-xs)',
+                        }}
+                      >
+                        {t.isActive ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                        {t.isActive ? 'Activo' : 'Pausado'}
+                      </button>
+                    </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                      <button
+                        onClick={() => toggleActive(t)}
+                        style={{
+                          padding: '6px 10px',
+                          border: '1px solid var(--border-light)',
+                          borderRadius: 'var(--radius-md)',
+                          background: 'var(--bg-secondary)',
+                          cursor: 'pointer',
+                          fontSize: 'var(--text-xs)',
+                        }}
+                      >
+                        {t.isActive ? 'Desactivar' : 'Activar'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {showModal && (
@@ -213,7 +244,7 @@ export default function AdminTratamientosPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Ej. Dermaplaning Glow"
+                  placeholder="Ej. Limpieza Facial Profunda"
                   value={newTreatment.name}
                   onChange={(e) => setNewTreatment({ ...newTreatment, name: e.target.value })}
                   className="form-input"
@@ -227,13 +258,14 @@ export default function AdminTratamientosPage() {
                   onChange={(e) => setNewTreatment({ ...newTreatment, category: e.target.value })}
                   className="form-input"
                 >
-                  <option value="Tratamientos Faciales">Tratamientos Faciales</option>
-                  <option value="Tratamientos Corporales">Tratamientos Corporales</option>
-                  <option value="Depilación Definitiva Láser">Depilación Definitiva Láser</option>
+                  <option value="Facial">Tratamientos Faciales</option>
+                  <option value="Corporal">Tratamientos Corporales</option>
+                  <option value="Depilación">Depilación Definitiva Láser</option>
+                  <option value="Masajes">Masajes & Bienestar</option>
                 </select>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }} className="mb-6">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }} className="mb-4">
                 <div className="form-group">
                   <label className="form-label">Duración (min) *</label>
                   <input
@@ -241,8 +273,8 @@ export default function AdminTratamientosPage() {
                     required
                     min={15}
                     step={15}
-                    value={newTreatment.durationMinutes}
-                    onChange={(e) => setNewTreatment({ ...newTreatment, durationMinutes: Number(e.target.value) })}
+                    value={newTreatment.duration}
+                    onChange={(e) => setNewTreatment({ ...newTreatment, duration: Number(e.target.value) })}
                     className="form-input"
                   />
                 </div>
@@ -260,12 +292,23 @@ export default function AdminTratamientosPage() {
                 </div>
               </div>
 
+              <div className="form-group mb-6">
+                <label className="form-label">Descripción</label>
+                <textarea
+                  rows={2}
+                  placeholder="Beneficios, metodología y tipo de piel..."
+                  value={newTreatment.description}
+                  onChange={(e) => setNewTreatment({ ...newTreatment, description: e.target.value })}
+                  className="form-input"
+                />
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn--secondary">
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn--primary">
-                  Guardar Tratamiento
+                  Guardar en Base de Datos
                 </button>
               </div>
             </form>

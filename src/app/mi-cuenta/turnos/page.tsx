@@ -7,164 +7,84 @@ import {
   Clock,
   User,
   MapPin,
-  AlertCircle,
   CheckCircle2,
   XCircle,
   Plus,
-  RefreshCw,
 } from 'lucide-react';
-
-interface AppointmentItem {
-  id: string;
-  status: 'PENDING' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
-  date: string;
-  startTime: string;
-  endTime: string;
-  treatment: {
-    name: string;
-    durationMinutes: number;
-    price: number | null;
-  };
-  professional: {
-    user: {
-      firstName: string;
-      lastName: string;
-    };
-  };
-  room?: {
-    name: string;
-  };
-}
-
-const DEMO_CLIENT_APPOINTMENTS: AppointmentItem[] = [
-  {
-    id: 'apt-101',
-    status: 'CONFIRMED',
-    date: '2026-09-20',
-    startTime: '15:00',
-    endTime: '16:00',
-    treatment: {
-      name: 'Limpieza Facial Profunda',
-      durationMinutes: 60,
-      price: 32000,
-    },
-    professional: {
-      user: {
-        firstName: 'Valentina',
-        lastName: 'Rossi',
-      },
-    },
-    room: {
-      name: 'Consultorio 1 - Facial',
-    },
-  },
-  {
-    id: 'apt-102',
-    status: 'COMPLETED',
-    date: '2026-08-15',
-    startTime: '11:00',
-    endTime: '11:45',
-    treatment: {
-      name: 'Radiofrecuencia Facial Tripolar',
-      durationMinutes: 45,
-      price: 38000,
-    },
-    professional: {
-      user: {
-        firstName: 'Valentina',
-        lastName: 'Rossi',
-      },
-    },
-    room: {
-      name: 'Consultorio 1 - Facial',
-    },
-  },
-];
+import { useAuth } from '@/context/AuthContext';
+import { getAppointmentsByClient, updateAppointmentStatus, Appointment } from '@/lib/firestore-service';
 
 export default function MisTurnosPage() {
-  const [appointments, setAppointments] = useState<AppointmentItem[]>(DEMO_CLIENT_APPOINTMENTS);
+  const { user } = useAuth();
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [activeTab, setActiveTab] = useState<'proximos' | 'historial'>('proximos');
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const loadAppointments = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await getAppointmentsByClient(user.uid);
+      setAppointments(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadAppointments() {
-      try {
-        const res = await fetch('/api/appointments');
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setAppointments(data);
-          }
-        }
-      } catch {
-        // use demo appointments
-      }
-    }
     loadAppointments();
-  }, []);
+  }, [user]);
 
   const handleCancelAppointment = async (id: string) => {
     if (!confirm('¿Estás seguro/a de que deseas cancelar este turno?')) return;
-    setLoading(true);
     try {
-      const res = await fetch(`/api/appointments/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'CANCELLED' }),
-      });
-      if (res.ok) {
-        setAppointments((prev) =>
-          prev.map((apt) => (apt.id === id ? { ...apt, status: 'CANCELLED' } : apt))
-        );
-      } else {
-        // Optimistic update for demo mode
-        setAppointments((prev) =>
-          prev.map((apt) => (apt.id === id ? { ...apt, status: 'CANCELLED' } : apt))
-        );
-      }
-    } catch {
+      await updateAppointmentStatus(id, 'cancelled');
       setAppointments((prev) =>
-        prev.map((apt) => (apt.id === id ? { ...apt, status: 'CANCELLED' } : apt))
+        prev.map((apt) => (apt.id === id ? { ...apt, status: 'cancelled' } : apt))
       );
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      alert('Error al cancelar turno en la base de datos');
     }
   };
 
   const todayStr = new Date().toISOString().split('T')[0];
 
   const upcomingAppointments = appointments.filter(
-    (a) => a.date >= todayStr && a.status !== 'CANCELLED' && a.status !== 'COMPLETED'
+    (a) => a.date >= todayStr && a.status !== 'cancelled' && a.status !== 'completed'
   );
 
   const pastAppointments = appointments.filter(
-    (a) => a.date < todayStr || a.status === 'CANCELLED' || a.status === 'COMPLETED'
+    (a) => a.date < todayStr || a.status === 'cancelled' || a.status === 'completed'
   );
 
   const displayedList = activeTab === 'proximos' ? upcomingAppointments : pastAppointments;
 
-  const getStatusBadge = (status: AppointmentItem['status']) => {
+  const getStatusBadge = (status: Appointment['status']) => {
     switch (status) {
-      case 'CONFIRMED':
+      case 'confirmed':
         return (
           <span style={{ padding: '4px 10px', borderRadius: 'var(--radius-full)', background: 'var(--status-confirmed-bg)', color: 'var(--status-confirmed)', fontSize: 'var(--text-xs)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <CheckCircle2 size={13} /> Confirmado
           </span>
         );
-      case 'PENDING':
+      case 'pending':
         return (
           <span style={{ padding: '4px 10px', borderRadius: 'var(--radius-full)', background: 'var(--status-pending-bg)', color: 'var(--status-pending)', fontSize: 'var(--text-xs)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Clock size={13} /> Pendiente
           </span>
         );
-      case 'COMPLETED':
+      case 'completed':
         return (
           <span style={{ padding: '4px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(92, 127, 107, 0.15)', color: 'var(--primary)', fontSize: 'var(--text-xs)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             ✓ Realizado
           </span>
         );
-      case 'CANCELLED':
+      case 'cancelled':
         return (
           <span style={{ padding: '4px 10px', borderRadius: 'var(--radius-full)', background: 'var(--status-cancelled-bg)', color: 'var(--status-cancelled)', fontSize: 'var(--text-xs)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <XCircle size={13} /> Cancelado
@@ -227,12 +147,16 @@ export default function MisTurnosPage() {
       </div>
 
       {/* Appointment Cards */}
-      {displayedList.length === 0 ? (
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 'var(--space-12) 0', color: 'var(--text-muted)' }}>
+          Cargando tus turnos desde la base de datos...
+        </div>
+      ) : displayedList.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 'var(--space-12) 0', color: 'var(--text-muted)' }}>
           <Calendar size={48} style={{ margin: '0 auto var(--space-3)', opacity: 0.5 }} />
           <p style={{ fontSize: 'var(--text-base)', marginBottom: 'var(--space-4)' }}>
             {activeTab === 'proximos'
-              ? 'No tienes turnos próximos programados.'
+              ? 'No tienes turnos próximos programados en tu cuenta.'
               : 'No hay historial de turnos finalizados.'}
           </p>
           {activeTab === 'proximos' && (
@@ -284,32 +208,29 @@ export default function MisTurnosPage() {
 
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 4 }}>
-                    <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 600 }}>{apt.treatment.name}</h3>
+                    <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 600 }}>{apt.treatmentName}</h3>
                     {getStatusBadge(apt.status)}
                   </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <Clock size={14} /> {apt.startTime} - {apt.endTime} ({apt.treatment.durationMinutes} min)
+                      <Clock size={14} /> {apt.time} hs ({apt.treatmentDuration || 45} min)
                     </span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <User size={14} /> Prof. {apt.professional.user.firstName} {apt.professional.user.lastName}
+                      <User size={14} /> Prof. {apt.professionalName}
                     </span>
-                    {apt.room && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <MapPin size={14} /> {apt.room.name}
-                      </span>
-                    )}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--accent-gold)' }}>
+                      ${apt.treatmentPrice?.toLocaleString('es-AR')}
+                    </span>
                   </div>
                 </div>
               </div>
 
               {/* Action buttons */}
               <div>
-                {apt.status === 'CONFIRMED' || apt.status === 'PENDING' ? (
+                {apt.status === 'confirmed' || apt.status === 'pending' ? (
                   <button
                     onClick={() => handleCancelAppointment(apt.id)}
-                    disabled={loading}
                     style={{
                       padding: '6px 14px',
                       borderRadius: 'var(--radius-md)',

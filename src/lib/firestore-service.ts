@@ -90,6 +90,70 @@ export interface Appointment {
   createdAt?: any;
 }
 
+// ─── EXTENDED INTERFACES ──────────────────────────────────────────────────
+
+export interface Room {
+  id: string;
+  name: string;
+  description: string;
+  equipment: string[];
+  isActive: boolean;
+  createdAt?: any;
+}
+
+export interface ClinicalRecord {
+  id: string;
+  patientId: string;
+  patientName: string;
+  patientPhone?: string;
+  professionalId: string;
+  professionalName: string;
+  date: string;
+  treatmentName: string;
+  treatmentType: string;
+  notes: string;
+  parameters: string;
+  observations?: string;
+  beforePhoto?: string;
+  afterPhoto?: string;
+  createdAt?: any;
+}
+
+export interface ClinicalPhoto {
+  id: string;
+  patientName: string;
+  treatmentName: string;
+  date: string;
+  beforeUrl: string;
+  afterUrl: string;
+  notes?: string;
+  createdAt?: any;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  action: string;
+  userEmail: string;
+  userName: string;
+  ip?: string;
+  details: string;
+  category: 'AUTH' | 'APPOINTMENT' | 'PATIENT' | 'ADMIN' | 'SYSTEM';
+}
+
+export interface ClinicSettings {
+  name: string;
+  tagline: string;
+  address: string;
+  city: string;
+  phone: string;
+  whatsapp: string;
+  email: string;
+  openingHours: string;
+  cancellationPolicy: string;
+  onlineBookingEnabled: boolean;
+}
+
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 
 export function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
@@ -102,7 +166,7 @@ export function cleanFirestoreData<T extends Record<string, any>>(data: T): Part
   return cleaned as Partial<T>;
 }
 
-// ─── USERS ───────────────────────────────────────────────────────────────────
+// ─── USERS / CLIENTS ─────────────────────────────────────────────────────────
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   try {
@@ -112,7 +176,7 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     }
     return null;
   } catch (error) {
-    console.warn('Notice: Firestore getUserProfile was not accessible (using auth fallback):', error);
+    console.warn('Notice: Firestore getUserProfile was not accessible:', error);
     return null;
   }
 }
@@ -129,24 +193,46 @@ export async function setUserProfile(uid: string, data: Partial<UserProfile>): P
       { merge: true }
     );
   } catch (error) {
-    console.warn('Notice: could not persist user profile to Firestore (using in-memory profile):', error);
+    console.warn('Notice: could not persist user profile to Firestore:', error);
   }
+}
+
+export async function getAllUsers(): Promise<UserProfile[]> {
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+    if (!snapshot.empty) {
+      return snapshot.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+    }
+    return [];
+  } catch (error) {
+    console.warn('Error fetching all users from Firestore:', error);
+    return [];
+  }
+}
+
+export async function createClientProfile(data: Omit<UserProfile, 'uid'> & { uid?: string }): Promise<string> {
+  const uid = data.uid || `cli_${Date.now()}`;
+  await setDoc(doc(db, 'users', uid), {
+    ...cleanFirestoreData(data),
+    roles: data.roles || ['CLIENT'],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return uid;
 }
 
 // ─── TREATMENTS ──────────────────────────────────────────────────────────────
 
 export async function getTreatments(): Promise<Treatment[]> {
   try {
-    const q = query(collection(db, 'treatments'), where('isActive', '==', true));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocs(collection(db, 'treatments'));
     if (!snapshot.empty) {
       return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Treatment));
     }
-    // Fallback if collection not seeded yet
-    return defaultTreatments;
+    return [];
   } catch (error) {
-    console.warn('Could not fetch treatments from Firestore, using initial dataset:', error);
-    return defaultTreatments;
+    console.warn('Could not fetch treatments from Firestore:', error);
+    return [];
   }
 }
 
@@ -155,29 +241,66 @@ export async function getTreatmentBySlug(slug: string): Promise<Treatment | null
     const q = query(collection(db, 'treatments'), where('slug', '==', slug), limit(1));
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
-      const doc = snapshot.docs[0];
-      return { id: doc.id, ...doc.data() } as Treatment;
+      const docSnap = snapshot.docs[0];
+      return { id: docSnap.id, ...docSnap.data() } as Treatment;
     }
-    return defaultTreatments.find((t) => t.slug === slug) || null;
+    return null;
   } catch {
-    return defaultTreatments.find((t) => t.slug === slug) || null;
+    return null;
   }
+}
+
+export async function saveTreatment(treatment: Partial<Treatment> & { id?: string }): Promise<string> {
+  const id = treatment.id || `t_${Date.now()}`;
+  const cleanData = cleanFirestoreData(treatment);
+  await setDoc(
+    doc(db, 'treatments', id),
+    {
+      ...cleanData,
+      id,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+  return id;
+}
+
+export async function deleteTreatment(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'treatments', id));
 }
 
 // ─── PROFESSIONALS ───────────────────────────────────────────────────────────
 
 export async function getProfessionals(): Promise<Professional[]> {
   try {
-    const q = query(collection(db, 'professionals'), where('isActive', '==', true));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocs(collection(db, 'professionals'));
     if (!snapshot.empty) {
       return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Professional));
     }
-    return defaultProfessionals;
+    return [];
   } catch (error) {
-    console.warn('Could not fetch professionals from Firestore, using initial dataset:', error);
-    return defaultProfessionals;
+    console.warn('Could not fetch professionals from Firestore:', error);
+    return [];
   }
+}
+
+export async function saveProfessional(prof: Partial<Professional> & { id?: string }): Promise<string> {
+  const id = prof.id || `p_${Date.now()}`;
+  const cleanData = cleanFirestoreData(prof);
+  await setDoc(
+    doc(db, 'professionals', id),
+    {
+      ...cleanData,
+      id,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+  return id;
+}
+
+export async function deleteProfessional(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'professionals', id));
 }
 
 // ─── APPOINTMENTS ────────────────────────────────────────────────────────────
@@ -187,7 +310,7 @@ export async function createAppointment(data: Omit<Appointment, 'id' | 'createdA
     const cleanData = cleanFirestoreData(data);
     const docRef = await addDoc(collection(db, 'appointments'), {
       ...cleanData,
-      status: data.status || 'confirmed',
+      status: data.status || 'pending',
       createdAt: serverTimestamp(),
     });
     return docRef.id;
@@ -199,29 +322,22 @@ export async function createAppointment(data: Omit<Appointment, 'id' | 'createdA
 
 export async function getAppointmentsByClient(clientId: string): Promise<Appointment[]> {
   try {
-    const q = query(
-      collection(db, 'appointments'),
-      where('clientId', '==', clientId),
-      orderBy('createdAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
-  } catch {
-    // Fallback without compound index
     const q = query(collection(db, 'appointments'), where('clientId', '==', clientId));
     const snapshot = await getDocs(q);
     return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
+  } catch (err) {
+    console.warn('Error fetching client appointments:', err);
+    return [];
   }
 }
 
 export async function getAllAppointments(): Promise<Appointment[]> {
   try {
-    const q = query(collection(db, 'appointments'), orderBy('createdAt', 'desc'), limit(100));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
-  } catch {
     const snapshot = await getDocs(collection(db, 'appointments'));
     return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
+  } catch (err) {
+    console.warn('Error fetching appointments:', err);
+    return [];
   }
 }
 
@@ -230,6 +346,146 @@ export async function updateAppointmentStatus(
   status: Appointment['status']
 ): Promise<void> {
   await updateDoc(doc(db, 'appointments', id), { status, updatedAt: serverTimestamp() });
+}
+
+export async function deleteAppointment(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'appointments', id));
+}
+
+// ─── ROOMS / CONSULTORIOS ───────────────────────────────────────────────────
+
+export async function getRooms(): Promise<Room[]> {
+  try {
+    const snapshot = await getDocs(collection(db, 'rooms'));
+    if (!snapshot.empty) {
+      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Room));
+    }
+    return [];
+  } catch (error) {
+    console.warn('Error fetching rooms:', error);
+    return [];
+  }
+}
+
+export async function saveRoom(room: Partial<Room> & { id?: string }): Promise<string> {
+  const id = room.id || `r_${Date.now()}`;
+  const cleanData = cleanFirestoreData(room);
+  await setDoc(doc(db, 'rooms', id), { ...cleanData, id, updatedAt: serverTimestamp() }, { merge: true });
+  return id;
+}
+
+export async function deleteRoom(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'rooms', id));
+}
+
+// ─── CLINICAL RECORDS (HISTORIAS) ───────────────────────────────────────────
+
+export async function getClinicalRecords(patientId?: string): Promise<ClinicalRecord[]> {
+  try {
+    let q = query(collection(db, 'clinical_records'));
+    if (patientId) {
+      q = query(collection(db, 'clinical_records'), where('patientId', '==', patientId));
+    }
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as ClinicalRecord));
+  } catch (error) {
+    console.warn('Error fetching clinical records:', error);
+    return [];
+  }
+}
+
+export async function saveClinicalRecord(record: Partial<ClinicalRecord> & { id?: string }): Promise<string> {
+  const id = record.id || `rec_${Date.now()}`;
+  const cleanData = cleanFirestoreData(record);
+  await setDoc(doc(db, 'clinical_records', id), { ...cleanData, id, createdAt: serverTimestamp() }, { merge: true });
+  return id;
+}
+
+export async function deleteClinicalRecord(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'clinical_records', id));
+}
+
+// ─── CLINICAL PHOTOS (FOTOS) ────────────────────────────────────────────────
+
+export async function getClinicalPhotos(): Promise<ClinicalPhoto[]> {
+  try {
+    const snapshot = await getDocs(collection(db, 'clinical_photos'));
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as ClinicalPhoto));
+  } catch (error) {
+    console.warn('Error fetching clinical photos:', error);
+    return [];
+  }
+}
+
+export async function saveClinicalPhoto(photo: Partial<ClinicalPhoto> & { id?: string }): Promise<string> {
+  const id = photo.id || `photo_${Date.now()}`;
+  const cleanData = cleanFirestoreData(photo);
+  await setDoc(doc(db, 'clinical_photos', id), { ...cleanData, id, createdAt: serverTimestamp() }, { merge: true });
+  return id;
+}
+
+export async function deleteClinicalPhoto(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'clinical_photos', id));
+}
+
+// ─── AUDIT LOGS (AUDITORIA) ─────────────────────────────────────────────────
+
+export async function getAuditLogs(): Promise<AuditLog[]> {
+  try {
+    const snapshot = await getDocs(collection(db, 'audit_logs'));
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLog));
+  } catch (error) {
+    console.warn('Error fetching audit logs:', error);
+    return [];
+  }
+}
+
+export async function logAuditEvent(action: string, details: string, category: AuditLog['category'] = 'SYSTEM', userName = 'Sistema', userEmail = ''): Promise<void> {
+  try {
+    const id = `log_${Date.now()}`;
+    await setDoc(doc(db, 'audit_logs', id), {
+      id,
+      timestamp: new Date().toISOString(),
+      action,
+      details,
+      category,
+      userName,
+      userEmail,
+    });
+  } catch (e) {
+    console.warn('Could not record audit log:', e);
+  }
+}
+
+// ─── SETTINGS (CONFIGURACIÓN) ───────────────────────────────────────────────
+
+export const DEFAULT_SETTINGS: ClinicSettings = {
+  name: 'MOON Golden Beauty',
+  tagline: 'Estética & Bienestar Integral',
+  address: 'Av. del Libertador 4980, Piso 5',
+  city: 'Buenos Aires, Argentina',
+  phone: '+54 11 4789-0123',
+  whatsapp: '+54 9 11 2345-6789',
+  email: 'contacto@moongoldenbeauty.com',
+  openingHours: 'Lunes a Sábados: 09:00 a 20:00 hs',
+  cancellationPolicy: 'Cancelación con 24 hs de anticipación sin penalidad.',
+  onlineBookingEnabled: true,
+};
+
+export async function getClinicSettings(): Promise<ClinicSettings> {
+  try {
+    const docSnap = await getDoc(doc(db, 'settings', 'general'));
+    if (docSnap.exists()) {
+      return { ...DEFAULT_SETTINGS, ...docSnap.data() } as ClinicSettings;
+    }
+    return DEFAULT_SETTINGS;
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+export async function saveClinicSettings(settings: Partial<ClinicSettings>): Promise<void> {
+  await setDoc(doc(db, 'settings', 'general'), cleanFirestoreData(settings), { merge: true });
 }
 
 // ─── DEFAULT SEED DATA ───────────────────────────────────────────────────────

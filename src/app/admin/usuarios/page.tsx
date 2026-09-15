@@ -1,77 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { UserCircle, Shield, Key, Search, UserCheck } from 'lucide-react';
-
-interface UserItem {
-  id: string;
-  name: string;
-  email: string;
-  role: 'Administrador' | 'Profesional' | 'Cliente';
-  status: 'Activo' | 'Inactivo';
-  lastLogin: string;
-}
-
-const DEMO_USERS: UserItem[] = [
-  {
-    id: 'u-1',
-    name: 'Administración General',
-    email: 'admin@esteticastudio.com',
-    role: 'Administrador',
-    status: 'Activo',
-    lastLogin: 'Hoy, 13:40 hs',
-  },
-  {
-    id: 'u-2',
-    name: 'Valentina Rossi',
-    email: 'valentina@esteticastudio.com',
-    role: 'Profesional',
-    status: 'Activo',
-    lastLogin: 'Hoy, 08:50 hs',
-  },
-  {
-    id: 'u-3',
-    name: 'Camila Méndez',
-    email: 'camila@esteticastudio.com',
-    role: 'Profesional',
-    status: 'Activo',
-    lastLogin: 'Ayer, 18:20 hs',
-  },
-  {
-    id: 'u-4',
-    name: 'Lucía Fernández',
-    email: 'lucia@esteticastudio.com',
-    role: 'Profesional',
-    status: 'Activo',
-    lastLogin: '12/09/2026',
-  },
-  {
-    id: 'u-5',
-    name: 'María Eugenia González',
-    email: 'mariaeugenia@gmail.com',
-    role: 'Cliente',
-    status: 'Activo',
-    lastLogin: 'Hoy, 10:15 hs',
-  },
-  {
-    id: 'u-6',
-    name: 'Luciana Beltrán',
-    email: 'luciana.beltran@hotmail.com',
-    role: 'Cliente',
-    status: 'Activo',
-    lastLogin: '10/09/2026',
-  },
-];
+import { getAllUsers, UserProfile } from '@/lib/firestore-service';
 
 export default function AdminUsuariosPage() {
-  const [users, setUsers] = useState<UserItem[]>(DEMO_USERS);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const filtered = users.filter((u) =>
-    u.name.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase()) ||
-    u.role.toLowerCase().includes(search.toLowerCase())
-  );
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const data = await getAllUsers();
+      setUsers(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const filtered = users.filter((u) => {
+    const term = search.toLowerCase();
+    const fullName = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+    const email = (u.email || '').toLowerCase();
+    const role = (u.roles?.join(', ') || '').toLowerCase();
+    return fullName.includes(term) || email.includes(term) || role.includes(term);
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -80,7 +40,7 @@ export default function AdminUsuariosPage() {
           Usuarios, Roles & Permisos
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
-          Control de accesos y asignación de perfiles (Administrador, Profesional, Cliente).
+          Cuentas registradas en Firestore y asignación de perfiles (Administrador, Profesional, Cliente).
         </p>
       </div>
 
@@ -104,59 +64,75 @@ export default function AdminUsuariosPage() {
           />
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 'var(--text-sm)' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase' }}>
-                <th style={{ padding: '12px 16px' }}>Usuario</th>
-                <th style={{ padding: '12px 16px' }}>Email</th>
-                <th style={{ padding: '12px 16px' }}>Rol Asignado</th>
-                <th style={{ padding: '12px 16px' }}>Último Acceso</th>
-                <th style={{ padding: '12px 16px' }}>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((u) => (
-                <tr key={u.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td style={{ padding: '14px 16px', fontWeight: 600 }}>{u.name}</td>
-                  <td style={{ padding: '14px 16px', color: 'var(--text-secondary)' }}>{u.email}</td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <span
-                      style={{
-                        padding: '3px 10px',
-                        borderRadius: 'var(--radius-full)',
-                        fontSize: 'var(--text-xs)',
-                        fontWeight: 600,
-                        background:
-                          u.role === 'Administrador'
-                            ? 'rgba(163, 137, 86, 0.15)'
-                            : u.role === 'Profesional'
-                            ? 'rgba(92, 127, 107, 0.15)'
-                            : 'var(--bg-secondary)',
-                        color:
-                          u.role === 'Administrador'
-                            ? 'var(--accent-gold)'
-                            : u.role === 'Profesional'
-                            ? 'var(--primary)'
-                            : 'var(--text-secondary)',
-                      }}
-                    >
-                      {u.role}
-                    </span>
-                  </td>
-                  <td style={{ padding: '14px 16px', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                    {u.lastLogin}
-                  </td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <span style={{ color: 'var(--status-confirmed)', fontWeight: 600, fontSize: 'var(--text-xs)' }}>
-                      ● {u.status}
-                    </span>
-                  </td>
+        {loading ? (
+          <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-muted)' }}>
+            Cargando usuarios desde Firestore...
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
+            <UserCircle size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 16px' }} />
+            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 8 }}>
+              No hay usuarios adicionales en Firestore
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
+              Los usuarios aparecerán automáticamente al registrarse o iniciar sesión con Google/Email.
+            </p>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 'var(--text-sm)' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '12px 16px' }}>Usuario</th>
+                  <th style={{ padding: '12px 16px' }}>Email</th>
+                  <th style={{ padding: '12px 16px' }}>Rol Asignado</th>
+                  <th style={{ padding: '12px 16px' }}>Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtered.map((u) => {
+                  const isAdmin = u.roles?.includes('ADMIN') || u.roles?.includes('DIRECTOR');
+                  const isProfessional = u.roles?.includes('PROFESSIONAL') || u.roles?.includes('DOCTOR');
+                  return (
+                    <tr key={u.uid} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                      <td style={{ padding: '14px 16px', fontWeight: 600 }}>
+                        {u.firstName} {u.lastName || ''}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: 'var(--text-secondary)' }}>{u.email}</td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <span
+                          style={{
+                            padding: '3px 10px',
+                            borderRadius: 'var(--radius-full)',
+                            fontSize: 'var(--text-xs)',
+                            fontWeight: 600,
+                            background: isAdmin
+                              ? 'rgba(163, 137, 86, 0.15)'
+                              : isProfessional
+                              ? 'rgba(92, 127, 107, 0.15)'
+                              : 'var(--bg-secondary)',
+                            color: isAdmin
+                              ? 'var(--accent-gold)'
+                              : isProfessional
+                              ? 'var(--primary)'
+                              : 'var(--text-secondary)',
+                          }}
+                        >
+                          {isAdmin ? 'Administrador' : isProfessional ? 'Profesional' : 'Cliente'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{ color: 'var(--status-confirmed)', fontWeight: 600, fontSize: 'var(--text-xs)' }}>
+                          ● Activo
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
