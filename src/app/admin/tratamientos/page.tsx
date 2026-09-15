@@ -12,7 +12,7 @@ import {
   DollarSign,
   Search,
 } from 'lucide-react';
-import { DEMO_CATEGORIES } from '@/lib/demo-data';
+import { defaultTreatments } from '@/lib/firestore-service';
 
 interface TreatmentRow {
   id: string;
@@ -25,17 +25,15 @@ interface TreatmentRow {
 }
 
 export default function AdminTratamientosPage() {
-  const initialTreatments: TreatmentRow[] = DEMO_CATEGORIES.flatMap((c) =>
-    c.treatments.map((t) => ({
-      id: t.id,
-      name: t.name,
-      category: c.name,
-      durationMinutes: t.durationMinutes,
-      price: t.price || 0,
-      showPrice: t.showPrice,
-      isActive: t.isActive,
-    }))
-  );
+  const initialTreatments: TreatmentRow[] = defaultTreatments.map((t) => ({
+    id: t.id,
+    name: t.name,
+    category: t.category,
+    durationMinutes: t.duration,
+    price: t.price || 0,
+    showPrice: true,
+    isActive: t.isActive,
+  }));
 
   const [treatments, setTreatments] = useState<TreatmentRow[]>(initialTreatments);
   const [search, setSearch] = useState('');

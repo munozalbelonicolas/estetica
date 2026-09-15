@@ -1,134 +1,128 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import prisma from '@/lib/prisma';
-import { Clock, ArrowRight, Sparkles } from 'lucide-react';
-import { DEMO_CATEGORIES, DemoCategory } from '@/lib/demo-data';
+import Image from 'next/image';
+import { Clock, ArrowRight, Sparkles, CheckCircle } from 'lucide-react';
+import { getTreatments, defaultTreatments } from '@/lib/firestore-service';
 import '../page.css';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Tratamientos',
-  description: 'Descubrí todos nuestros tratamientos estéticos profesionales. Faciales, corporales, masajes y más.',
+  title: 'Tratamientos — MOON Golden Beauty',
+  description:
+    'Descubrí todos nuestros tratamientos estéticos profesionales. Faciales, corporales, masajes y depilación láser definitiva.',
 };
 
 export default async function TratamientosPage() {
-  let categories: DemoCategory[] = [];
+  const treatments = await getTreatments();
 
-  try {
-    const dbCategories = await prisma.treatmentCategory.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: 'asc' },
-      include: {
-        treatments: {
-          where: { isActive: true },
-          orderBy: { sortOrder: 'asc' },
-        },
-      },
-    });
+  // Group treatments by category
+  const categoriesMap: Record<string, typeof treatments> = {};
+  treatments.forEach((t) => {
+    const cat = t.category || 'Otros';
+    if (!categoriesMap[cat]) categoriesMap[cat] = [];
+    categoriesMap[cat].push(t);
+  });
 
-    if (dbCategories && dbCategories.length > 0) {
-      categories = dbCategories as unknown as DemoCategory[];
-    } else {
-      categories = DEMO_CATEGORIES;
-    }
-  } catch {
-    categories = DEMO_CATEGORIES;
-  }
+  const categoryNames = Object.keys(categoriesMap);
 
   return (
     <div style={{ paddingTop: 'var(--navbar-height)' }}>
       {/* Hero */}
-      <section className="section" style={{ paddingBottom: 0 }}>
+      <section className="section" style={{ paddingBottom: '2rem' }}>
         <div className="container">
           <div className="section__header">
             <p className="section__subtitle">Nuestros Servicios</p>
-            <h1 className="heading-section">Tratamientos</h1>
+            <h1 className="heading-section">Tratamientos Estéticos</h1>
             <div className="divider" />
             <p className="section__description">
-              Conocé todos los tratamientos que ofrecemos. Cada uno diseñado
-              para brindarte los mejores resultados con tecnología de vanguardia y cuidado personalizado.
+              Protocolos personalizados con tecnología de vanguardia y cosmecéutica de excelencia para realzar tu belleza y bienestar integral.
             </p>
           </div>
         </div>
       </section>
 
       {/* Categories with treatments */}
-      {categories.map((category) => (
-        <section
-          key={category.id}
-          id={category.slug}
-          className="section"
-          style={{ paddingTop: 'var(--space-8)' }}
-        >
+      {categoryNames.map((category) => (
+        <section key={category} className="section" style={{ paddingTop: '2rem' }}>
           <div className="container">
-            <h2 className="heading-section mb-2">{category.name}</h2>
-            {category.description && (
-              <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-6)' }}>
-                {category.description}
-              </p>
-            )}
-            <div className="treatments-grid">
-              {category.treatments.map((treatment) => (
-                <Link
-                  key={treatment.id}
-                  href={`/tratamientos/${treatment.slug}`}
-                  className="treatment-card card card--interactive"
-                >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <Sparkles size={24} color="var(--accent-gold)" />
+              <h2 className="heading-card" style={{ fontSize: '1.75rem' }}>{category}</h2>
+            </div>
+
+            <div className="grid grid-3">
+              {categoriesMap[category].map((treatment) => (
+                <div key={treatment.id} className="card treatment-card">
                   <div className="treatment-card__image">
-                    {treatment.imageUrl ? (
-                      <img
-                        src={treatment.imageUrl}
-                        alt={treatment.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <div className="treatment-card__image-placeholder">
-                        <Sparkles size={32} />
-                      </div>
-                    )}
-                    <span className="treatment-card__category">
-                      {category.name}
-                    </span>
-                  </div>
-                  <div className="card__body">
-                    <h3 className="card__title">{treatment.name}</h3>
-                    <p className="card__text">
-                      {treatment.description?.substring(0, 120)}
-                      {treatment.description && treatment.description.length > 120 ? '...' : ''}
-                    </p>
-                    <div className="treatment-card__meta">
-                      <span className="treatment-card__duration">
-                        <Clock size={14} />
-                        {treatment.durationMinutes} min
-                      </span>
-                      {treatment.showPrice && treatment.price && (
-                        <span style={{ fontWeight: 600, color: 'var(--accent-gold)' }}>
-                          ${treatment.price.toLocaleString('es-AR')}
-                        </span>
-                      )}
-                      <span className="treatment-card__link">
-                        Ver más <ArrowRight size={14} />
-                      </span>
+                    <Image
+                      src={treatment.image || '/images/treatment-cleanse.jpg'}
+                      alt={treatment.name}
+                      fill
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      style={{ objectFit: 'cover' }}
+                    />
+                    <div className="treatment-card__duration">
+                      <Clock size={14} />
+                      <span>{treatment.duration} min</span>
                     </div>
                   </div>
-                </Link>
+                  <div className="card__body treatment-card__content">
+                    <h3 className="treatment-card__title">{treatment.name}</h3>
+                    <p className="treatment-card__description">{treatment.description}</p>
+
+                    {treatment.benefits && (
+                      <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0', fontSize: '0.85rem' }}>
+                        {treatment.benefits.map((b, i) => (
+                          <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>
+                            <CheckCircle size={14} color="var(--accent-gold)" />
+                            {b}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div className="treatment-card__footer">
+                      <div className="treatment-card__price">
+                        <span className="treatment-card__price-value">
+                          ${treatment.price.toLocaleString('es-AR')}
+                        </span>
+                      </div>
+                      <Link
+                        href={`/reservar?treatment=${treatment.id}`}
+                        className="btn btn--primary btn--sm"
+                      >
+                        Reservar
+                        <ArrowRight size={14} />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
         </section>
       ))}
 
-      {categories.length === 0 && (
-        <section className="section">
-          <div className="container text-center">
-            <Sparkles size={48} style={{ color: 'var(--text-muted)', margin: '0 auto var(--space-4)' }} />
-            <p style={{ color: 'var(--text-muted)' }}>
-              Próximamente publicaremos nuestros tratamientos.
+      {/* CTA Section */}
+      <section className="cta section" style={{ margin: '4rem 0 0' }}>
+        <div className="container cta__container">
+          <div className="cta__content">
+            <h2 className="cta__title">¿Tenés dudas sobre qué tratamiento elegir?</h2>
+            <p className="cta__text">
+              Nuestras profesionales te asesoran de forma personalizada para diseñar un plan a tu medida.
             </p>
+            <div className="cta__actions">
+              <Link href="/contacto" className="btn btn--primary btn--lg">
+                Consultar por WhatsApp
+              </Link>
+              <Link href="/reservar" className="btn btn--secondary btn--lg">
+                Reservar Turno
+              </Link>
+            </div>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
     </div>
   );
 }

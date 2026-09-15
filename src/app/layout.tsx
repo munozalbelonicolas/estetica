@@ -4,12 +4,17 @@ import { Providers } from './providers';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Estética Studio — Tratamientos Estéticos Profesionales',
-    template: '%s | Estética Studio',
+    default: 'MOON Golden Beauty — Estética & Bienestar',
+    template: '%s | MOON Golden Beauty',
   },
   description:
-    'Estética Studio ofrece tratamientos faciales, corporales y de bienestar profesionales. Reservá tu turno online y descubrí nuestros servicios.',
+    'MOON Golden Beauty Estética ofrece tratamientos faciales, corporales y de bienestar profesionales de alta gama. Reservá tu turno online.',
+  icons: {
+    icon: '/images/logo.png',
+    apple: '/images/logo.png',
+  },
   keywords: [
+    'MOON Golden Beauty',
     'estética',
     'tratamientos faciales',
     'tratamientos corporales',
@@ -17,17 +22,25 @@ export const metadata: Metadata = {
     'peeling',
     'radiofrecuencia',
     'masajes',
-    'depilación',
+    'depilación definitiva',
     'belleza',
     'bienestar',
   ],
   openGraph: {
-    title: 'Estética Studio — Tratamientos Estéticos Profesionales',
+    title: 'MOON Golden Beauty — Estética & Bienestar',
     description:
-      'Tratamientos faciales, corporales y de bienestar profesionales. Reservá tu turno online.',
+      'Tratamientos faciales, corporales y de bienestar profesionales de alta gama. Reservá tu turno online.',
     type: 'website',
     locale: 'es_AR',
-    siteName: 'Estética Studio',
+    siteName: 'MOON Golden Beauty Estética',
+    images: [
+      {
+        url: '/images/logo.png',
+        width: 800,
+        height: 800,
+        alt: 'MOON Golden Beauty Estética',
+      },
+    ],
   },
 };
 

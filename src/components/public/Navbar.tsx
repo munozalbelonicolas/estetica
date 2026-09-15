@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useSession } from 'next-auth/react';
-import { Menu, X, Calendar, User, LogIn } from 'lucide-react';
+import Image from 'next/image';
+import { Menu, X, Calendar, User, LogIn, LogOut } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import './Navbar.css';
 
 const navLinks = [
@@ -20,7 +21,7 @@ export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { user, userProfile, isAdmin, isProfessional, logout } = useAuth();
   const isHome = pathname === '/';
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Close mobile menu on route change
   useEffect(() => {
     setIsMobileOpen(false);
   }, [pathname]);
@@ -48,14 +50,14 @@ export default function Navbar() {
   }, [isMobileOpen]);
 
   const getDashboardLink = () => {
-    if (!session?.user) return null;
-    const roles = (session.user as any).roles || [];
-    if (roles.includes('admin')) return '/admin';
-    if (roles.includes('professional')) return '/profesional';
-    return '/mi-cuenta';
+    if (!user) return null;
+    if (isAdmin) return '/admin';
+    if (isProfessional) return '/profesional/agenda';
+    return '/mi-cuenta/turnos';
   };
 
   const dashboardLink = getDashboardLink();
+  const displayName = userProfile?.firstName || user?.displayName?.split(' ')[0] || 'Mi Cuenta';
 
   return (
     <>
@@ -67,8 +69,18 @@ export default function Navbar() {
         <div className="navbar__container container">
           {/* Logo */}
           <Link href="/" className="navbar__logo">
-            <span className="navbar__logo-text">Estética</span>
-            <span className="navbar__logo-accent">Studio</span>
+            <Image
+              src="/images/logo.png"
+              alt="MOON Golden Beauty Estética"
+              width={42}
+              height={42}
+              className="navbar__logo-img"
+              priority
+            />
+            <div className="navbar__logo-brand">
+              <span className="navbar__logo-text">MOON</span>
+              <span className="navbar__logo-accent">Golden Beauty</span>
+            </div>
           </Link>
 
           {/* Desktop Nav */}
@@ -88,15 +100,22 @@ export default function Navbar() {
 
           {/* Actions */}
           <div className="navbar__actions">
-            {session?.user ? (
-              <>
+            {user ? (
+              <div className="navbar__user-menu">
                 {dashboardLink && (
                   <Link href={dashboardLink} className="navbar__action-btn">
                     <User size={18} />
-                    <span className="navbar__action-text">Mi Panel</span>
+                    <span className="navbar__action-text">{displayName}</span>
                   </Link>
                 )}
-              </>
+                <button
+                  onClick={() => logout()}
+                  className="navbar__action-btn navbar__action-btn--logout"
+                  title="Cerrar sesión"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
             ) : (
               <Link href="/login" className="navbar__action-btn">
                 <LogIn size={18} />
@@ -137,13 +156,23 @@ export default function Navbar() {
             ))}
           </div>
           <div className="mobile-menu__actions">
-            {session?.user ? (
-              dashboardLink && (
-                <Link href={dashboardLink} className="btn btn--secondary btn--full">
-                  <User size={18} />
-                  Mi Panel
-                </Link>
-              )
+            {user ? (
+              <>
+                {dashboardLink && (
+                  <Link href={dashboardLink} className="btn btn--secondary btn--full">
+                    <User size={18} />
+                    Panel ({displayName})
+                  </Link>
+                )}
+                <button
+                  onClick={() => logout()}
+                  className="btn btn--outline btn--full"
+                  style={{ marginTop: '0.5rem' }}
+                >
+                  <LogOut size={18} />
+                  Cerrar Sesión
+                </button>
+              </>
             ) : (
               <Link href="/login" className="btn btn--secondary btn--full">
                 <LogIn size={18} />

@@ -131,7 +131,7 @@ export default function HomePage() {
         <div className="hero__overlay" />
         <div className="hero__content container">
           <div className="hero__text">
-            <p className="subtitle animate-fadeInUp">Bienvenida a Estética Studio</p>
+            <p className="subtitle animate-fadeInUp">Bienvenida a MOON Golden Beauty Estética</p>
             <h1 className="hero__title animate-fadeInUp">
               Tu belleza,
               <br />

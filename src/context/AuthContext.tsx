@@ -1,0 +1,226 @@
+'use client';
+
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import {
+  User as FirebaseUser,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+} from 'firebase/auth';
+import { auth, googleProvider, isAdminEmail } from '@/lib/firebase';
+import { getUserProfile, setUserProfile, UserProfile } from '@/lib/firestore-service';
+
+interface AuthContextType {
+  user: FirebaseUser | null;
+  userProfile: UserProfile | null;
+  loading: boolean;
+  roles: string[];
+  isAdmin: boolean;
+  isProfessional: boolean;
+  isClient: boolean;
+  loginWithEmail: (email: string, password: string) => Promise<UserProfile | null>;
+  registerWithEmail: (
+    email: string,
+    password: string,
+    profileData: { firstName: string; lastName: string; phone?: string; birthDate?: string }
+  ) => Promise<UserProfile>;
+  loginWithGoogle: () => Promise<UserProfile>;
+  resetPassword: (email: string) => Promise<void>;
+  resendVerificationEmail: () => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [userProfile, setUserProfileState] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+
+      if (firebaseUser) {
+        try {
+          let profile = await getUserProfile(firebaseUser.uid);
+          const shouldBeAdmin = isAdminEmail(firebaseUser.email);
+
+          if (!profile) {
+            // Split displayName or fallback
+            const names = (firebaseUser.displayName || '').split(' ');
+            const firstName = names[0] || 'Usuario';
+            const lastName = names.slice(1).join(' ') || '';
+
+            profile = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              firstName,
+              lastName,
+              avatarUrl: firebaseUser.photoURL || undefined,
+              roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
+              emailVerified: firebaseUser.emailVerified,
+            };
+            await setUserProfile(firebaseUser.uid, profile);
+          } else if (shouldBeAdmin && !profile.roles?.includes('admin')) {
+            // Upgrade to admin if email is in the admin list
+            const updatedRoles = Array.from(new Set([...(profile.roles || []), 'admin']));
+            profile.roles = updatedRoles;
+            await setUserProfile(firebaseUser.uid, { roles: updatedRoles });
+          }
+
+          setUserProfileState(profile);
+        } catch (err) {
+          console.error('Error fetching/setting user profile in Firestore:', err);
+        }
+      } else {
+        setUserProfileState(null);
+      }
+
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const loginWithEmail = async (email: string, password: string): Promise<UserProfile | null> => {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    let profile = await getUserProfile(cred.user.uid);
+    const shouldBeAdmin = isAdminEmail(cred.user.email);
+
+    if (!profile) {
+      profile = {
+        uid: cred.user.uid,
+        email: cred.user.email || email,
+        firstName: cred.user.displayName || 'Usuario',
+        lastName: '',
+        roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
+        emailVerified: cred.user.emailVerified,
+      };
+      await setUserProfile(cred.user.uid, profile);
+    } else if (shouldBeAdmin && !profile.roles?.includes('admin')) {
+      const updatedRoles = Array.from(new Set([...(profile.roles || []), 'admin']));
+      profile.roles = updatedRoles;
+      await setUserProfile(cred.user.uid, { roles: updatedRoles });
+    }
+
+    setUserProfileState(profile);
+    return profile;
+  };
+
+  const registerWithEmail = async (
+    email: string,
+    password: string,
+    profileData: { firstName: string; lastName: string; phone?: string; birthDate?: string }
+  ): Promise<UserProfile> => {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    
+    // Send email verification
+    try {
+      await sendEmailVerification(cred.user);
+    } catch (e) {
+      console.warn('Could not send verification email:', e);
+    }
+
+    const shouldBeAdmin = isAdminEmail(email);
+    const profile: UserProfile = {
+      uid: cred.user.uid,
+      email: cred.user.email || email,
+      firstName: profileData.firstName,
+      lastName: profileData.lastName,
+      phone: profileData.phone,
+      birthDate: profileData.birthDate,
+      roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
+      emailVerified: false,
+    };
+
+    await setUserProfile(cred.user.uid, profile);
+    setUserProfileState(profile);
+    return profile;
+  };
+
+  const loginWithGoogle = async (): Promise<UserProfile> => {
+    const cred = await signInWithPopup(auth, googleProvider);
+    let profile = await getUserProfile(cred.user.uid);
+    const shouldBeAdmin = isAdminEmail(cred.user.email);
+
+    if (!profile) {
+      const names = (cred.user.displayName || '').split(' ');
+      const firstName = names[0] || 'Usuario';
+      const lastName = names.slice(1).join(' ') || '';
+
+      profile = {
+        uid: cred.user.uid,
+        email: cred.user.email || '',
+        firstName,
+        lastName,
+        avatarUrl: cred.user.photoURL || undefined,
+        roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
+        emailVerified: true, // Google accounts are verified
+      };
+      await setUserProfile(cred.user.uid, profile);
+    } else if (shouldBeAdmin && !profile.roles?.includes('admin')) {
+      const updatedRoles = Array.from(new Set([...(profile.roles || []), 'admin']));
+      profile.roles = updatedRoles;
+      await setUserProfile(cred.user.uid, { roles: updatedRoles });
+    }
+
+    setUserProfileState(profile);
+    return profile;
+  };
+
+  const resetPassword = async (email: string): Promise<void> => {
+    await sendPasswordResetEmail(auth, email);
+  };
+
+  const resendVerificationEmail = async (): Promise<void> => {
+    if (auth.currentUser) {
+      await sendEmailVerification(auth.currentUser);
+    }
+  };
+
+  const logout = async (): Promise<void> => {
+    await signOut(auth);
+    setUser(null);
+    setUserProfileState(null);
+  };
+
+  const roles = userProfile?.roles || [];
+  const isAdmin = roles.includes('admin') || isAdminEmail(user?.email);
+  const isProfessional = roles.includes('professional');
+  const isClient = roles.includes('client');
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        userProfile,
+        loading,
+        roles,
+        isAdmin,
+        isProfessional,
+        isClient,
+        loginWithEmail,
+        registerWithEmail,
+        loginWithGoogle,
+        resetPassword,
+        resendVerificationEmail,
+        logout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

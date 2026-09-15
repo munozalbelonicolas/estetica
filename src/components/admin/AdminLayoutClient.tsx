@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { signOut } from 'next-auth/react';
+import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard,
   Calendar,
@@ -47,8 +48,13 @@ export default function AdminLayoutClient({
   userName: string;
 }) {
   const pathname = usePathname();
+  const { logout, userProfile, user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const displayUser = userProfile?.firstName
+    ? `${userProfile.firstName} ${userProfile.lastName || ''}`.trim()
+    : user?.displayName || userName || 'Administrador';
 
   const isActive = (href: string, exact?: boolean) => {
     if (exact) return pathname === href;
@@ -71,13 +77,19 @@ export default function AdminLayoutClient({
       >
         <div className="admin-sidebar__header">
           <Link href="/admin" className="admin-sidebar__logo">
+            <Image
+              src="/images/logo.png"
+              alt="MOON Golden Beauty"
+              width={32}
+              height={32}
+              className="admin-sidebar__logo-img"
+            />
             {!collapsed && (
-              <>
-                <span className="admin-sidebar__logo-text">Estética</span>
-                <span className="admin-sidebar__logo-accent">Studio</span>
-              </>
+              <div className="admin-sidebar__logo-brand">
+                <span className="admin-sidebar__logo-text">MOON</span>
+                <span className="admin-sidebar__logo-accent">Beauty Admin</span>
+              </div>
             )}
-            {collapsed && <span className="admin-sidebar__logo-short">ES</span>}
           </Link>
           <button
             className="admin-sidebar__collapse-btn"
@@ -116,7 +128,7 @@ export default function AdminLayoutClient({
           </Link>
           <button
             className="admin-sidebar__link admin-sidebar__link--danger"
-            onClick={() => signOut({ callbackUrl: '/' })}
+            onClick={() => logout()}
             title={collapsed ? 'Cerrar sesión' : undefined}
           >
             <LogOut size={20} />
@@ -137,8 +149,8 @@ export default function AdminLayoutClient({
           </button>
           <div className="admin-topbar__spacer" />
           <div className="admin-topbar__user">
-            <div className="admin-topbar__avatar">{userName.charAt(0)}</div>
-            <span className="admin-topbar__username">{userName}</span>
+            <div className="admin-topbar__avatar">{displayUser.charAt(0).toUpperCase()}</div>
+            <span className="admin-topbar__username">{displayUser}</span>
           </div>
         </header>
         <div className="admin-content">{children}</div>

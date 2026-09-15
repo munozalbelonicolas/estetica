@@ -1,55 +1,19 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { Sparkles, Calendar, Award, Heart, CheckCircle2 } from 'lucide-react';
-import { DEMO_PROFESSIONALS } from '@/lib/demo-data';
-import prisma from '@/lib/prisma';
+import Image from 'next/image';
+import { Award, Heart, CheckCircle2, Calendar } from 'lucide-react';
+import { getProfessionals } from '@/lib/firestore-service';
 import '../page.css';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Nuestro Equipo de Profesionales',
-  description: 'Conocé a las especialistas certificadas en salud y estética que cuidarán de tu piel y bienestar.',
+  title: 'Nuestro Equipo — MOON Golden Beauty',
+  description: 'Conocé a las especialistas y directores médicos que cuidarán de tu piel y bienestar en MOON Estética.',
 };
 
-interface ProfessionalItem {
-  id: string;
-  user: {
-    firstName: string;
-    lastName: string;
-    email?: string;
-    avatarUrl?: string | null;
-  };
-  bio?: string | null;
-  specialties: string[];
-  licenseNumber?: string;
-}
-
 export default async function ProfesionalesPage() {
-  let professionals: ProfessionalItem[] = DEMO_PROFESSIONALS;
-
-  try {
-    const dbProfessionals = await prisma.professional.findMany({
-      where: { isActive: true },
-      include: {
-        user: {
-          select: { firstName: true, lastName: true, email: true, avatarUrl: true },
-        },
-      },
-    });
-
-    if (dbProfessionals && dbProfessionals.length > 0) {
-      professionals = dbProfessionals.map((p) => ({
-        id: p.id,
-        user: p.user,
-        bio: p.bio,
-        specialties: p.specialties || [],
-        licenseNumber: (p as any).licenseNumber || undefined,
-      }));
-    }
-  } catch {
-    // fallback to demo professionals
-  }
+  const professionals = await getProfessionals();
 
   return (
     <div style={{ paddingTop: 'var(--navbar-height)' }}>
@@ -89,10 +53,12 @@ export default async function ProfesionalesPage() {
                 }}
               >
                 <div style={{ height: 280, position: 'relative', overflow: 'hidden' }}>
-                  <img
-                    src={prof.user.avatarUrl || 'https://images.unsplash.com/photo-1594824813581-c7c427382f6e?auto=format&fit=crop&w=600&q=80'}
-                    alt={`${prof.user.firstName} ${prof.user.lastName}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  <Image
+                    src={prof.image || '/images/team-maria.jpg'}
+                    alt={prof.name}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    style={{ objectFit: 'cover' }}
                   />
                   <div
                     style={{
@@ -101,7 +67,7 @@ export default async function ProfesionalesPage() {
                       left: 0,
                       right: 0,
                       padding: 'var(--space-4)',
-                      background: 'linear-gradient(to top, rgba(29, 27, 24, 0.85), transparent)',
+                      background: 'linear-gradient(to top, rgba(29, 27, 24, 0.9), transparent)',
                       color: 'var(--white)',
                     }}
                   >
@@ -120,11 +86,9 @@ export default async function ProfesionalesPage() {
                       <Award size={14} /> Especialista Certificada
                     </span>
                     <h3 style={{ fontSize: 'var(--text-xl)', fontFamily: 'var(--font-heading)', color: 'var(--white)', marginTop: 4 }}>
-                      {prof.user.firstName} {prof.user.lastName}
+                      {prof.name}
                     </h3>
-                    {prof.licenseNumber && (
-                      <p style={{ fontSize: 'var(--text-xs)', opacity: 0.85 }}>Mat. {prof.licenseNumber}</p>
-                    )}
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--accent-gold)' }}>{prof.role}</p>
                   </div>
                 </div>
 
@@ -153,7 +117,7 @@ export default async function ProfesionalesPage() {
                             gap: 4,
                           }}
                         >
-                          <CheckCircle2 size={12} /> {spec}
+                          <CheckCircle2 size={12} color="var(--accent-gold)" /> {spec}
                         </span>
                       ))}
                     </div>
@@ -164,7 +128,7 @@ export default async function ProfesionalesPage() {
                     className="btn btn--primary"
                     style={{ width: '100%', justifyContent: 'center' }}
                   >
-                    <Calendar size={16} /> Reservar Turno con {prof.user.firstName}
+                    <Calendar size={16} /> Reservar Turno
                   </Link>
                 </div>
               </div>
@@ -194,7 +158,7 @@ export default async function ProfesionalesPage() {
             </div>
             <h2 className="heading-section mb-3">Atención Segura y Personalizada</h2>
             <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, fontSize: 'var(--text-base)' }}>
-              En nuestro centro no creemos en recetas estándar. Evaluamos tu biotipo cutáneo, antecedentes y expectativas en una consulta diagnóstica inicial para diseñar un plan a tu medida con aparatología médica de última generación.
+              En MOON Golden Beauty evaluamos tu biotipo cutáneo, antecedentes y expectativas en una consulta diagnóstica inicial para diseñar un plan a tu medida con aparatología médica de última generación.
             </p>
           </div>
         </div>

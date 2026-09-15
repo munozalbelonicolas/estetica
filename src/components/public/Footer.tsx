@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { MapPin, Phone, Mail, Clock } from 'lucide-react';
 import './Footer.css';
 
@@ -12,8 +13,17 @@ export default function Footer() {
           {/* Brand */}
           <div className="footer__brand">
             <div className="footer__logo">
-              <span className="footer__logo-text">Estética</span>
-              <span className="footer__logo-accent">Studio</span>
+              <Image
+                src="/images/logo.png"
+                alt="MOON Golden Beauty Estética"
+                width={48}
+                height={48}
+                className="footer__logo-img"
+              />
+              <div className="footer__logo-brand">
+                <span className="footer__logo-text">MOON</span>
+                <span className="footer__logo-accent">Golden Beauty</span>
+              </div>
             </div>
             <p className="footer__tagline">
               Tu bienestar, nuestra pasión. Tratamientos estéticos profesionales 

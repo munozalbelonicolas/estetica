@@ -1,9 +1,9 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import prisma from '@/lib/prisma';
-import { Clock, ArrowLeft, Calendar, CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
-import { DEMO_CATEGORIES, DemoTreatment } from '@/lib/demo-data';
+import Image from 'next/image';
+import { Clock, ArrowLeft, Calendar, CheckCircle, ShieldCheck, Sparkles } from 'lucide-react';
+import { getTreatmentBySlug } from '@/lib/firestore-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,102 +11,32 @@ interface Props {
   params: Promise<{ slug: string }>;
 }
 
-function findDemoTreatment(slug: string): DemoTreatment | null {
-  for (const cat of DEMO_CATEGORIES) {
-    const found = cat.treatments.find((t) => t.slug === slug);
-    if (found) {
-      return {
-        ...found,
-        category: { name: cat.name, slug: cat.slug },
-        professionalTreatments: [
-          {
-            professional: {
-              id: 'prof-1',
-              user: { firstName: 'Valentina', lastName: 'Rossi' },
-              specialties: ['Cosmiatría Facial', 'Peelings Químicos'],
-            },
-          },
-          {
-            professional: {
-              id: 'prof-2',
-              user: { firstName: 'Camila', lastName: 'Méndez' },
-              specialties: ['Modelado Corporal'],
-            },
-          },
-        ],
-      };
-    }
-  }
-  return null;
-}
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  let treatmentName = 'Tratamiento';
-  let treatmentDesc = 'Tratamiento profesional en Estética Studio';
+  const treatment = await getTreatmentBySlug(slug);
 
-  try {
-    const dbTreatment = await prisma.treatment.findUnique({
-      where: { slug },
-      select: { name: true, description: true },
-    });
-    if (dbTreatment) {
-      treatmentName = dbTreatment.name;
-      treatmentDesc = dbTreatment.description?.substring(0, 160) || treatmentDesc;
-    } else {
-      const demo = findDemoTreatment(slug);
-      if (demo) {
-        treatmentName = demo.name;
-        treatmentDesc = demo.description.substring(0, 160);
-      }
-    }
-  } catch {
-    const demo = findDemoTreatment(slug);
-    if (demo) {
-      treatmentName = demo.name;
-      treatmentDesc = demo.description.substring(0, 160);
-    }
+  if (!treatment) {
+    return {
+      title: 'Tratamiento | MOON Golden Beauty',
+    };
   }
 
   return {
-    title: `${treatmentName} | Estética Studio`,
-    description: treatmentDesc,
+    title: `${treatment.name} | MOON Golden Beauty`,
+    description: treatment.description.substring(0, 160),
   };
 }
 
 export default async function TreatmentDetailPage({ params }: Props) {
   const { slug } = await params;
-  let treatment: any = null;
-
-  try {
-    const dbTreatment = await prisma.treatment.findUnique({
-      where: { slug, isActive: true },
-      include: {
-        category: true,
-        professionalTreatments: {
-          include: {
-            professional: {
-              include: { user: true },
-            },
-          },
-        },
-      },
-    });
-    if (dbTreatment) {
-      treatment = dbTreatment;
-    } else {
-      treatment = findDemoTreatment(slug);
-    }
-  } catch {
-    treatment = findDemoTreatment(slug);
-  }
+  const treatment = await getTreatmentBySlug(slug);
 
   if (!treatment) {
     notFound();
   }
 
   return (
-    <div style={{ paddingTop: 'calc(var(--navbar-height) + var(--space-8))' }}>
+    <div style={{ paddingTop: 'calc(var(--navbar-height) + var(--space-8))', paddingBottom: '4rem' }}>
       <div className="container container--narrow">
         <Link
           href="/tratamientos"
@@ -123,265 +53,129 @@ export default async function TreatmentDetailPage({ params }: Props) {
           Volver a tratamientos
         </Link>
 
-        {treatment.category?.name && (
-          <div className="badge badge--gold mb-4">{treatment.category.name}</div>
-        )}
+        <div className="badge badge--gold mb-4" style={{ display: 'inline-block', marginBottom: '1rem' }}>
+          {treatment.category}
+        </div>
 
         <h1
           style={{
             fontFamily: 'var(--font-heading)',
             fontSize: 'var(--text-4xl)',
-            fontWeight: 400,
+            fontWeight: 700,
             marginBottom: 'var(--space-4)',
           }}
         >
           {treatment.name}
         </h1>
 
+        {/* Hero image of treatment */}
+        <div style={{ position: 'relative', height: 360, borderRadius: 'var(--radius-xl)', overflow: 'hidden', marginBottom: '2rem' }}>
+          <Image
+            src={treatment.image || '/images/treatment-cleanse.jpg'}
+            alt={treatment.name}
+            fill
+            sizes="(max-width: 1200px) 100vw, 800px"
+            style={{ objectFit: 'cover' }}
+            priority
+          />
+        </div>
+
+        {/* Quick info */}
         <div
           style={{
             display: 'flex',
             gap: 'var(--space-6)',
+            padding: 'var(--space-4) var(--space-6)',
+            background: 'var(--bg-secondary)',
+            borderRadius: 'var(--radius-lg)',
             marginBottom: 'var(--space-8)',
             flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
-          <span
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-              color: 'var(--text-secondary)',
-              fontSize: 'var(--text-sm)',
-            }}
-          >
-            <Clock size={16} />
-            {treatment.durationMinutes} minutos
-          </span>
-          {treatment.showPrice && treatment.price && (
-            <span
-              style={{
-                fontWeight: 600,
-                color: 'var(--accent-gold)',
-                fontSize: 'var(--text-lg)',
-              }}
-            >
-              ${treatment.price.toLocaleString('es-AR')}
-            </span>
-          )}
-        </div>
-
-        {/* Treatment Image if available */}
-        {treatment.imageUrl && (
-          <div
-            style={{
-              borderRadius: 'var(--radius-xl)',
-              overflow: 'hidden',
-              marginBottom: 'var(--space-8)',
-              maxHeight: 380,
-            }}
-          >
-            <img
-              src={treatment.imageUrl}
-              alt={treatment.name}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <Clock size={20} color="var(--accent-gold)" />
+            <div>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', display: 'block' }}>
+                Duración
+              </span>
+              <strong style={{ fontSize: 'var(--text-base)' }}>{treatment.duration} minutos</strong>
+            </div>
           </div>
-        )}
+
+          <div>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', display: 'block' }}>
+              Inversión
+            </span>
+            <strong style={{ fontSize: 'var(--text-xl)', color: 'var(--accent-gold)' }}>
+              ${treatment.price.toLocaleString('es-AR')}
+            </strong>
+          </div>
+
+          <Link href={`/reservar?treatment=${treatment.id}`} className="btn btn--primary">
+            <Calendar size={18} />
+            Reservar Turno
+          </Link>
+        </div>
 
         {/* Description */}
         <div style={{ marginBottom: 'var(--space-8)' }}>
-          <h2
-            style={{
-              fontFamily: 'var(--font-heading)',
-              fontSize: 'var(--text-xl)',
-              marginBottom: 'var(--space-3)',
-            }}
-          >
+          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
             Descripción del Tratamiento
           </h2>
-          <p
-            style={{
-              color: 'var(--text-secondary)',
-              lineHeight: 1.8,
-              fontSize: 'var(--text-base)',
-            }}
-          >
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, fontSize: 'var(--text-base)' }}>
             {treatment.description}
           </p>
         </div>
 
-        {/* Preparation / Indications */}
-        {treatment.preparationInstructions && (
-          <div
-            style={{
-              padding: 'var(--space-5)',
-              background: 'var(--status-confirmed-bg)',
-              borderRadius: 'var(--radius-lg)',
-              marginBottom: 'var(--space-4)',
-            }}
-          >
-            <h3
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 600,
-                color: 'var(--accent-teal)',
-                marginBottom: 'var(--space-2)',
-              }}
-            >
-              <CheckCircle size={16} />
-              Preparación e Indicaciones Previas
-            </h3>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-              {treatment.preparationInstructions}
-            </p>
-          </div>
-        )}
-
-        {/* Aftercare */}
-        {treatment.aftercareInstructions && (
-          <div
-            style={{
-              padding: 'var(--space-5)',
-              background: 'rgba(212, 165, 165, 0.15)',
-              borderRadius: 'var(--radius-lg)',
-              marginBottom: 'var(--space-4)',
-            }}
-          >
-            <h3
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 600,
-                color: 'var(--accent-rose)',
-                marginBottom: 'var(--space-2)',
-              }}
-            >
-              <ShieldCheck size={16} />
-              Cuidados Posteriores
-            </h3>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-              {treatment.aftercareInstructions}
-            </p>
-          </div>
-        )}
-
-        {/* Contraindications */}
-        {treatment.contraindications && (
-          <div
-            style={{
-              padding: 'var(--space-5)',
-              background: 'var(--status-pending-bg)',
-              borderRadius: 'var(--radius-lg)',
-              marginBottom: 'var(--space-8)',
-            }}
-          >
-            <h3
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 600,
-                color: 'var(--status-pending)',
-                marginBottom: 'var(--space-2)',
-              }}
-            >
-              <AlertTriangle size={16} />
-              Contraindicaciones
-            </h3>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-              {treatment.contraindications}
-            </p>
-          </div>
-        )}
-
-        {/* Professionals */}
-        {treatment.professionalTreatments && treatment.professionalTreatments.length > 0 && (
+        {/* Benefits */}
+        {treatment.benefits && treatment.benefits.length > 0 && (
           <div style={{ marginBottom: 'var(--space-8)' }}>
-            <h3
-              style={{
-                fontFamily: 'var(--font-heading)',
-                fontSize: 'var(--text-xl)',
-                marginBottom: 'var(--space-4)',
-              }}
-            >
-              Profesionales que realizan este tratamiento
-            </h3>
-            <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-              {treatment.professionalTreatments.map((pt: any, index: number) => (
+            <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-4)' }}>
+              Beneficios Principales
+            </h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+              {treatment.benefits.map((benefit, i) => (
                 <div
-                  key={pt.id || index}
+                  key={i}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 'var(--space-3)',
-                    padding: 'var(--space-3) var(--space-4)',
-                    background: 'var(--bg-secondary)',
-                    borderRadius: 'var(--radius-lg)',
+                    gap: '0.75rem',
+                    padding: '1rem',
+                    background: 'var(--bg-card)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-light)',
                   }}
                 >
-                  <div
-                    className="avatar avatar-placeholder"
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      background: 'var(--primary-light)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 600,
-                      color: 'var(--primary-dark)',
-                    }}
-                  >
-                    {pt.professional.user.firstName.charAt(0)}
-                  </div>
-                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>
-                    {pt.professional.user.firstName} {pt.professional.user.lastName}
-                  </span>
+                  <CheckCircle size={18} color="var(--accent-gold)" />
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{benefit}</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* CTA */}
+        {/* Bottom Booking CTA */}
         <div
           style={{
             textAlign: 'center',
-            padding: 'var(--space-10)',
-            background: 'var(--bg-secondary)',
-            borderRadius: 'var(--radius-xl)',
-            marginBottom: 'var(--space-16)',
+            padding: '3rem 2rem',
+            background: 'var(--bg-card)',
+            borderRadius: 'var(--radius-2xl)',
+            border: '1px solid var(--border-light)',
+            marginTop: '3rem',
           }}
         >
-          <h3
-            style={{
-              fontFamily: 'var(--font-heading)',
-              fontSize: 'var(--text-2xl)',
-              marginBottom: 'var(--space-3)',
-            }}
-          >
-            ¿Querés reservar este tratamiento?
-          </h3>
-          <p
-            style={{
-              color: 'var(--text-secondary)',
-              marginBottom: 'var(--space-6)',
-              fontSize: 'var(--text-sm)',
-            }}
-          >
-            Elegí tu profesional favorita y reservá un turno en pocos pasos.
+          <Sparkles size={32} color="var(--accent-gold)" style={{ margin: '0 auto 1rem' }} />
+          <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>¿Lista para vivir la experiencia MOON?</h3>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', maxWidth: 480, margin: '0 auto 1.5rem' }}>
+            Reservá tu turno online en simples pasos y empezá a disfrutar de resultados visibles y bienestar.
           </p>
           <Link href={`/reservar?treatment=${treatment.id}`} className="btn btn--primary btn--lg">
             <Calendar size={20} />
-            Reservar Turno
+            Reservar {treatment.name}
           </Link>
         </div>
       </div>
