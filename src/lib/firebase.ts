@@ -25,6 +25,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const ADMIN_EMAILS = [
   'melaniemancin@gmail.com',
+  'munozalbelonicolas@gmail.com',
   'nicolasmunozalbelo@gmail.com',
 ];
 
