@@ -6,19 +6,41 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:push": "npx prisma db push",
+    "db:seed": "npx prisma db seed",
+    "db:studio": "npx prisma studio",
+    "db:generate": "npx prisma generate"
+  },
+  "prisma": {
+    "seed": "npx tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.11.3",
+    "@prisma/client": "6.4.1",
+    "bcryptjs": "^3.0.3",
+    "chart.js": "^4.5.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.46.0",
     "next": "16.3.5",
+    "next-auth": "^5.0.0-beta.32",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "19.2.8",
+    "uuid": "^14.0.2",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@esbuild/linux-x64": "^0.28.2",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "prisma": "6.4.1",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }

@@ -1,0 +1,369 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── AUTH & USERS ───────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  firstName     String    @map("first_name")
+  lastName      String    @map("last_name")
+  phone         String?
+  birthDate     DateTime? @map("birth_date")
+  dni           String?
+  avatarUrl     String?   @map("avatar_url")
+  observations  String?
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  userRoles     UserRole[]
+  client        Client?
+  professional  Professional?
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  uploadedPhotos Photo[]    @relation("UploadedBy")
+
+  @@map("users")
+}
+
+model Role {
+  id    String @id @default(uuid())
+  name  String @unique // 'client', 'professional', 'admin'
+  label String // 'Cliente', 'Profesional', 'Administrador'
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  roleId String @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model Permission {
+  id    String @id @default(uuid())
+  key   String @unique // 'appointments.create', 'users.manage', etc.
+  label String
+  group String // 'agenda', 'clients', 'admin', etc.
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ─── CLIENTS ────────────────────────────────────────────────
+
+model Client {
+  id           String  @id @default(uuid())
+  userId       String  @unique @map("user_id")
+  observations String?
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments     Appointment[]
+  treatmentRecords TreatmentRecord[]
+  photos           Photo[]
+  photoConsents    PhotoConsent[]
+
+  @@map("clients")
+}
+
+// ─── PROFESSIONALS ──────────────────────────────────────────
+
+model Professional {
+  id          String   @id @default(uuid())
+  userId      String   @unique @map("user_id")
+  bio         String?
+  photoUrl    String?  @map("photo_url")
+  specialties String[]
+  isActive    Boolean  @default(true) @map("is_active")
+
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  professionalTreatments ProfessionalTreatment[]
+  schedules              ProfessionalSchedule[]
+  appointments           Appointment[]
+  treatmentRecords       TreatmentRecord[]
+  blockedSlots           BlockedSlot[]
+
+  @@map("professionals")
+}
+
+model ProfessionalTreatment {
+  id             String @id @default(uuid())
+  professionalId String @map("professional_id")
+  treatmentId    String @map("treatment_id")
+
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  treatment    Treatment    @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalId, treatmentId])
+  @@map("professional_treatments")
+}
+
+model ProfessionalSchedule {
+  id             String  @id @default(uuid())
+  professionalId String  @map("professional_id")
+  dayOfWeek      Int     @map("day_of_week") // 0=Domingo ... 6=Sábado
+  startTime      String  @map("start_time") // "09:00"
+  endTime        String  @map("end_time")   // "18:00"
+  isActive       Boolean @default(true) @map("is_active")
+
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@map("professional_schedules")
+}
+
+// ─── TREATMENTS ─────────────────────────────────────────────
+
+model TreatmentCategory {
+  id          String  @id @default(uuid())
+  name        String
+  slug        String  @unique
+  description String?
+  sortOrder   Int     @default(0) @map("sort_order")
+  isActive    Boolean @default(true) @map("is_active")
+
+  treatments Treatment[]
+
+  @@map("treatment_categories")
+}
+
+model Treatment {
+  id               String  @id @default(uuid())
+  categoryId       String  @map("category_id")
+  name             String
+  slug             String  @unique
+  description      String?
+  imageUrl         String? @map("image_url")
+  durationMinutes  Int     @map("duration_minutes")
+  price            Float?
+  showPrice        Boolean @default(true) @map("show_price")
+  indications      String?
+  contraindications String?
+  isActive         Boolean @default(true) @map("is_active")
+  sortOrder        Int     @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  category               TreatmentCategory       @relation(fields: [categoryId], references: [id])
+  professionalTreatments ProfessionalTreatment[]
+  treatmentRooms         TreatmentRoom[]
+  appointments           Appointment[]
+  treatmentRecords       TreatmentRecord[]
+
+  @@map("treatments")
+}
+
+// ─── ROOMS / RESOURCES ──────────────────────────────────────
+
+model Room {
+  id       String  @id @default(uuid())
+  name     String
+  type     String  @default("consultorio") // 'consultorio', 'sala_corporal', etc.
+  isActive Boolean @default(true) @map("is_active")
+
+  treatmentRooms TreatmentRoom[]
+  appointments   Appointment[]
+  blockedSlots   BlockedSlot[]
+
+  @@map("rooms")
+}
+
+model TreatmentRoom {
+  id          String @id @default(uuid())
+  treatmentId String @map("treatment_id")
+  roomId      String @map("room_id")
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  room      Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([treatmentId, roomId])
+  @@map("treatment_rooms")
+}
+
+// ─── APPOINTMENTS ───────────────────────────────────────────
+
+model Appointment {
+  id             String   @id @default(uuid())
+  clientId       String   @map("client_id")
+  professionalId String   @map("professional_id")
+  treatmentId    String   @map("treatment_id")
+  roomId         String   @map("room_id")
+  date           DateTime @db.Date
+  startTime      String   @map("start_time") // "09:00"
+  endTime        String   @map("end_time")   // "09:45"
+  status         String   @default("confirmed") // 'pending','confirmed','completed','cancelled','no_show'
+  cancellationReason String? @map("cancellation_reason")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  client       Client       @relation(fields: [clientId], references: [id])
+  professional Professional @relation(fields: [professionalId], references: [id])
+  treatment    Treatment    @relation(fields: [treatmentId], references: [id])
+  room         Room         @relation(fields: [roomId], references: [id])
+
+  treatmentRecord TreatmentRecord?
+  notifications   Notification[]
+
+  @@map("appointments")
+}
+
+// ─── TREATMENT RECORDS (Historia Estética) ──────────────────
+
+model TreatmentRecord {
+  id                    String    @id @default(uuid())
+  appointmentId         String?   @unique @map("appointment_id")
+  clientId              String    @map("client_id")
+  professionalId        String    @map("professional_id")
+  treatmentId           String    @map("treatment_id")
+  date                  DateTime  @db.Date
+  treatedArea           String?   @map("treated_area")
+  observations          String?
+  productsUsed          String?   @map("products_used")
+  recommendations       String?
+  nextTreatmentSuggested String?  @map("next_treatment_suggested")
+  nextSessionDate       DateTime? @map("next_session_date") @db.Date
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  appointment  Appointment?  @relation(fields: [appointmentId], references: [id])
+  client       Client        @relation(fields: [clientId], references: [id])
+  professional Professional  @relation(fields: [professionalId], references: [id])
+  treatment    Treatment     @relation(fields: [treatmentId], references: [id])
+  photos       Photo[]
+
+  @@map("treatment_records")
+}
+
+// ─── PHOTOS ─────────────────────────────────────────────────
+
+model Photo {
+  id                String   @id @default(uuid())
+  treatmentRecordId String   @map("treatment_record_id")
+  clientId          String   @map("client_id")
+  type              String   // 'before', 'after'
+  storagePath       String   @map("storage_path")
+  caption           String?
+  isPublic          Boolean  @default(false) @map("is_public")
+  consentGranted    Boolean  @default(false) @map("consent_granted")
+  uploadedById      String   @map("uploaded_by_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  treatmentRecord TreatmentRecord @relation(fields: [treatmentRecordId], references: [id], onDelete: Cascade)
+  client          Client          @relation(fields: [clientId], references: [id])
+  uploadedBy      User            @relation("UploadedBy", fields: [uploadedById], references: [id])
+  photoConsents   PhotoConsent[]
+
+  @@map("photos")
+}
+
+model PhotoConsent {
+  id        String    @id @default(uuid())
+  clientId  String    @map("client_id")
+  photoId   String    @map("photo_id")
+  granted   Boolean   @default(false)
+  grantedAt DateTime? @map("granted_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  client Client @relation(fields: [clientId], references: [id])
+  photo  Photo  @relation(fields: [photoId], references: [id], onDelete: Cascade)
+
+  @@map("photo_consents")
+}
+
+// ─── BLOCKED SLOTS ──────────────────────────────────────────
+
+model BlockedSlot {
+  id             String   @id @default(uuid())
+  professionalId String?  @map("professional_id")
+  roomId         String?  @map("room_id")
+  date           DateTime @db.Date
+  startTime      String?  @map("start_time")
+  endTime        String?  @map("end_time")
+  allDay         Boolean  @default(false) @map("all_day")
+  reason         String?  // 'vacation', 'holiday', 'maintenance', 'manual'
+  description    String?
+  createdById    String   @map("created_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  professional Professional? @relation(fields: [professionalId], references: [id])
+  room         Room?         @relation(fields: [roomId], references: [id])
+
+  @@map("blocked_slots")
+}
+
+// ─── BUSINESS CONFIG ────────────────────────────────────────
+
+model BusinessConfig {
+  id    String @id @default(uuid())
+  key   String @unique
+  value Json
+
+  @@map("business_config")
+}
+
+// ─── NOTIFICATIONS ──────────────────────────────────────────
+
+model Notification {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  appointmentId String?   @map("appointment_id")
+  type          String    // 'confirmation', 'reminder', 'cancellation', 'reschedule'
+  channel       String    // 'email', 'whatsapp', 'sms', 'push'
+  status        String    @default("pending") // 'pending', 'sent', 'failed'
+  content       Json?
+  sentAt        DateTime? @map("sent_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user        User         @relation(fields: [userId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@map("notifications")
+}
+
+// ─── AUDIT LOG ──────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  action     String   // 'create', 'update', 'delete', 'role_change'
+  entityType String   @map("entity_type") // 'user', 'appointment', 'treatment', etc.
+  entityId   String?  @map("entity_id")
+  details    Json?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
