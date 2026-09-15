@@ -3,6 +3,7 @@ import './globals.css';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://estetica-one-psi.vercel.app'),
   title: {
     default: 'MOON Golden Beauty — Estética & Bienestar',
     template: '%s | MOON Golden Beauty',

@@ -1,10 +1,11 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Sparkles, Shield, Heart, Award, CheckCircle2, ArrowRight, Clock, MapPin } from 'lucide-react';
 import '../page.css';
 
 export const metadata: Metadata = {
-  title: 'Sobre Nosotros — Estética Studio',
+  title: 'Sobre Nosotros — MOON Golden Beauty',
   description: 'Conocé nuestra historia, filosofía de bienestar integral y estándares de excelencia médica en estética.',
 };
 
@@ -83,9 +84,11 @@ export default function NosotrosPage() {
                   boxShadow: '0 20px 40px rgba(0,0,0,0.1)',
                 }}
               >
-                <img
-                  src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=800&q=80"
-                  alt="Instalaciones de Estética Studio"
+                <Image
+                  src="/images/about-main.jpg"
+                  alt="Instalaciones de MOON Golden Beauty"
+                  width={800}
+                  height={420}
                   style={{ width: '100%', height: 420, objectFit: 'cover' }}
                 />
               </div>
