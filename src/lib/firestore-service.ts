@@ -90,6 +90,18 @@ export interface Appointment {
   createdAt?: any;
 }
 
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+
+export function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned as Partial<T>;
+}
+
 // ─── USERS ───────────────────────────────────────────────────────────────────
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
@@ -100,24 +112,24 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     }
     return null;
   } catch (error) {
-    console.error('Error fetching user profile:', error);
+    console.warn('Notice: Firestore getUserProfile was not accessible (using auth fallback):', error);
     return null;
   }
 }
 
 export async function setUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
   try {
+    const cleanData = cleanFirestoreData(data);
     await setDoc(
       doc(db, 'users', uid),
       {
-        ...data,
+        ...cleanData,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
   } catch (error) {
-    console.error('Error saving user profile:', error);
-    throw error;
+    console.warn('Notice: could not persist user profile to Firestore (using in-memory profile):', error);
   }
 }
 
@@ -172,8 +184,9 @@ export async function getProfessionals(): Promise<Professional[]> {
 
 export async function createAppointment(data: Omit<Appointment, 'id' | 'createdAt'>): Promise<string> {
   try {
+    const cleanData = cleanFirestoreData(data);
     const docRef = await addDoc(collection(db, 'appointments'), {
-      ...data,
+      ...cleanData,
       status: data.status || 'confirmed',
       createdAt: serverTimestamp(),
     });

@@ -61,21 +61,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: firebaseUser.email || '',
               firstName,
               lastName,
-              avatarUrl: firebaseUser.photoURL || undefined,
+              avatarUrl: firebaseUser.photoURL || '',
               roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
               emailVerified: firebaseUser.emailVerified,
             };
-            await setUserProfile(firebaseUser.uid, profile);
+            try {
+              await setUserProfile(firebaseUser.uid, profile);
+            } catch (saveErr) {
+              console.warn('Could not persist profile to Firestore:', saveErr);
+            }
           } else if (shouldBeAdmin && !profile.roles?.includes('admin')) {
             // Upgrade to admin if email is in the admin list
             const updatedRoles = Array.from(new Set([...(profile.roles || []), 'admin']));
             profile.roles = updatedRoles;
-            await setUserProfile(firebaseUser.uid, { roles: updatedRoles });
+            try {
+              await setUserProfile(firebaseUser.uid, { roles: updatedRoles });
+            } catch (saveErr) {
+              console.warn('Could not persist admin role to Firestore:', saveErr);
+            }
           }
 
           setUserProfileState(profile);
         } catch (err) {
           console.error('Error fetching/setting user profile in Firestore:', err);
+          const shouldBeAdmin = isAdminEmail(firebaseUser.email);
+          setUserProfileState({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            firstName: firebaseUser.displayName || 'Usuario',
+            lastName: '',
+            roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
+            emailVerified: firebaseUser.emailVerified,
+          });
         }
       } else {
         setUserProfileState(null);
@@ -89,8 +106,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithEmail = async (email: string, password: string): Promise<UserProfile | null> => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    let profile = await getUserProfile(cred.user.uid);
     const shouldBeAdmin = isAdminEmail(cred.user.email);
+    let profile: UserProfile | null = null;
+
+    try {
+      profile = await getUserProfile(cred.user.uid);
+    } catch (e) {
+      console.warn('Could not fetch user profile from Firestore:', e);
+    }
 
     if (!profile) {
       profile = {
@@ -101,11 +124,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
         emailVerified: cred.user.emailVerified,
       };
-      await setUserProfile(cred.user.uid, profile);
+      try {
+        await setUserProfile(cred.user.uid, profile);
+      } catch (saveErr) {
+        console.warn('Could not persist profile to Firestore:', saveErr);
+      }
     } else if (shouldBeAdmin && !profile.roles?.includes('admin')) {
       const updatedRoles = Array.from(new Set([...(profile.roles || []), 'admin']));
       profile.roles = updatedRoles;
-      await setUserProfile(cred.user.uid, { roles: updatedRoles });
+      try {
+        await setUserProfile(cred.user.uid, { roles: updatedRoles });
+      } catch (saveErr) {
+        console.warn('Could not persist admin role to Firestore:', saveErr);
+      }
     }
 
     setUserProfileState(profile);
@@ -132,21 +163,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: cred.user.email || email,
       firstName: profileData.firstName,
       lastName: profileData.lastName,
-      phone: profileData.phone,
-      birthDate: profileData.birthDate,
+      phone: profileData.phone || '',
+      birthDate: profileData.birthDate || '',
       roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
       emailVerified: false,
     };
 
-    await setUserProfile(cred.user.uid, profile);
+    try {
+      await setUserProfile(cred.user.uid, profile);
+    } catch (saveErr) {
+      console.warn('Could not persist profile to Firestore:', saveErr);
+    }
+
     setUserProfileState(profile);
     return profile;
   };
 
   const loginWithGoogle = async (): Promise<UserProfile> => {
     const cred = await signInWithPopup(auth, googleProvider);
-    let profile = await getUserProfile(cred.user.uid);
     const shouldBeAdmin = isAdminEmail(cred.user.email);
+    let profile: UserProfile | null = null;
+
+    try {
+      profile = await getUserProfile(cred.user.uid);
+    } catch (e) {
+      console.warn('Could not fetch user profile from Firestore:', e);
+    }
 
     if (!profile) {
       const names = (cred.user.displayName || '').split(' ');
@@ -158,15 +200,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: cred.user.email || '',
         firstName,
         lastName,
-        avatarUrl: cred.user.photoURL || undefined,
+        avatarUrl: cred.user.photoURL || '',
         roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
         emailVerified: true, // Google accounts are verified
       };
-      await setUserProfile(cred.user.uid, profile);
+      try {
+        await setUserProfile(cred.user.uid, profile);
+      } catch (saveErr) {
+        console.warn('Could not persist profile to Firestore:', saveErr);
+      }
     } else if (shouldBeAdmin && !profile.roles?.includes('admin')) {
       const updatedRoles = Array.from(new Set([...(profile.roles || []), 'admin']));
       profile.roles = updatedRoles;
-      await setUserProfile(cred.user.uid, { roles: updatedRoles });
+      try {
+        await setUserProfile(cred.user.uid, { roles: updatedRoles });
+      } catch (saveErr) {
+        console.warn('Could not persist admin role to Firestore:', saveErr);
+      }
     }
 
     setUserProfileState(profile);

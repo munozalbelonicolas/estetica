@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Verifica si el usuario está logueado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Perfiles de usuario: cada usuario autenticado puede leer y editar su propio perfil
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Tratamientos y categorías: lectura pública, edición para usuarios logueados/admins
+    match /treatments/{document=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+    
+    // Profesionales: lectura pública
+    match /professionals/{document=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+    
+    // Turnos y citas: lectura y creación para usuarios logueados
+    match /appointments/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}
