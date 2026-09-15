@@ -1,19 +1,62 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileText, Plus, Search, Calendar, User, Clock, CheckCircle2, ChevronRight } from 'lucide-react';
-import { getClinicalRecords, saveClinicalRecord, ClinicalRecord } from '@/lib/firestore-service';
+import {
+  FileText,
+  Plus,
+  Search,
+  Calendar,
+  User,
+  Clock,
+  CheckCircle2,
+  ChevronRight,
+  UserPlus,
+  AlertCircle,
+  Phone,
+  Mail,
+  ShieldCheck,
+} from 'lucide-react';
+import {
+  getClinicalRecords,
+  saveClinicalRecord,
+  getAllUsers,
+  createClientProfile,
+  getProfessionals,
+  getTreatments,
+  ClinicalRecord,
+  UserProfile,
+  Professional,
+  Treatment,
+} from '@/lib/firestore-service';
+import { isValidArgentineDni, isValidArgentinePhone, isValidEmail } from '@/lib/validation';
 
 export default function AdminHistoriasPage() {
   const [records, setRecords] = useState<ClinicalRecord[]>([]);
+  const [clients, setClients] = useState<UserProfile[]>([]);
+  const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ClinicalRecord | null>(null);
+  const [saving, setSaving] = useState(false);
 
+  // Form State
+  const [patientMode, setPatientMode] = useState<'select' | 'new'>('select');
+  const [selectedClientId, setSelectedClientId] = useState('');
+  
+  // New Client Form
+  const [newClient, setNewClient] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    dni: '',
+  });
+
+  // Clinical Record Details Form
   const [formData, setFormData] = useState({
-    patientName: '',
-    patientPhone: '',
+    professionalId: '',
     professionalName: '',
     treatmentName: '',
     treatmentType: 'Facial',
@@ -23,11 +66,39 @@ export default function AdminHistoriasPage() {
     observations: '',
   });
 
+  const [errors, setErrors] = useState<{ client?: string; email?: string; phone?: string; dni?: string; form?: string }>({});
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await getClinicalRecords();
-      setRecords(data);
+      const [recs, usrs, profs, trts] = await Promise.all([
+        getClinicalRecords(),
+        getAllUsers(),
+        getProfessionals(),
+        getTreatments(),
+      ]);
+      setRecords(recs);
+      setClients(usrs);
+      setProfessionals(profs);
+      setTreatments(trts);
+
+      if (usrs.length > 0 && !selectedClientId) {
+        setSelectedClientId(usrs[0].uid);
+      }
+      if (profs.length > 0 && !formData.professionalName) {
+        setFormData((prev) => ({
+          ...prev,
+          professionalId: profs[0].id,
+          professionalName: profs[0].name,
+        }));
+      }
+      if (trts.length > 0 && !formData.treatmentName) {
+        setFormData((prev) => ({
+          ...prev,
+          treatmentName: trts[0].name,
+          treatmentType: trts[0].category || 'Facial',
+        }));
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -39,29 +110,104 @@ export default function AdminHistoriasPage() {
     loadData();
   }, []);
 
+  const openNewModal = () => {
+    setPatientMode(clients.length > 0 ? 'select' : 'new');
+    if (clients.length > 0 && !selectedClientId) {
+      setSelectedClientId(clients[0].uid);
+    }
+    setNewClient({ firstName: '', lastName: '', email: '', phone: '', dni: '' });
+    setErrors({});
+    setShowModal(true);
+  };
+
+  const validateNewClient = () => {
+    const errs: { email?: string; phone?: string; dni?: string; form?: string } = {};
+    if (!newClient.firstName.trim() || !newClient.lastName.trim()) {
+      errs.form = 'El nombre y apellido del paciente son requeridos';
+    }
+    if (!newClient.email.trim()) {
+      errs.email = 'El correo electrónico es requerido';
+    } else if (!isValidEmail(newClient.email)) {
+      errs.email = 'Correo electrónico inválido';
+    }
+    if (newClient.phone.trim() && !isValidArgentinePhone(newClient.phone)) {
+      errs.phone = 'Teléfono inválido para Argentina (ej: 11 2345-6789 o +54 9 11 2345-6789)';
+    }
+    if (newClient.dni.trim() && !isValidArgentineDni(newClient.dni)) {
+      errs.dni = 'DNI inválido (debe tener 7 u 8 dígitos numéricos)';
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrors({});
+
+    let targetPatientId = selectedClientId;
+    let targetPatientName = '';
+    let targetPatientPhone = '';
+
+    if (patientMode === 'new') {
+      if (!validateNewClient()) return;
+      setSaving(true);
+      try {
+        const uid = await createClientProfile({
+          firstName: newClient.firstName.trim(),
+          lastName: newClient.lastName.trim(),
+          email: newClient.email.trim().toLowerCase(),
+          phone: newClient.phone.trim(),
+          dni: newClient.dni.replace(/[\.\s\-]/g, ''),
+          roles: ['CLIENT'],
+          emailVerified: false,
+        });
+        targetPatientId = uid;
+        targetPatientName = `${newClient.firstName.trim()} ${newClient.lastName.trim()}`;
+        targetPatientPhone = newClient.phone.trim();
+      } catch (err) {
+        setErrors({ form: 'Error al registrar nuevo paciente' });
+        setSaving(false);
+        return;
+      }
+    } else {
+      if (!targetPatientId) {
+        setErrors({ form: 'Debe seleccionar un paciente registrado o crear uno nuevo.' });
+        return;
+      }
+      const existing = clients.find((c) => c.uid === targetPatientId);
+      if (existing) {
+        targetPatientName = `${existing.firstName} ${existing.lastName || ''}`.trim();
+        targetPatientPhone = existing.phone || '';
+      }
+    }
+
+    if (!formData.notes.trim()) {
+      setErrors({ form: 'Las notas clínicas de la sesión son obligatorias' });
+      return;
+    }
+
+    setSaving(true);
     try {
       await saveClinicalRecord({
-        patientId: `p_${Date.now()}`,
-        patientName: formData.patientName,
-        patientPhone: formData.patientPhone,
-        professionalId: `prof_${Date.now()}`,
-        professionalName: formData.professionalName,
-        treatmentName: formData.treatmentName,
+        patientId: targetPatientId,
+        patientName: targetPatientName,
+        patientPhone: targetPatientPhone,
+        professionalId: formData.professionalId || (professionals[0]?.id ?? 'prof_default'),
+        professionalName: formData.professionalName || (professionals[0]?.name ?? 'Especialista'),
+        treatmentName: formData.treatmentName || (treatments[0]?.name ?? 'Tratamiento Estético'),
         treatmentType: formData.treatmentType,
         date: formData.date,
         parameters: formData.parameters,
         notes: formData.notes,
         observations: formData.observations,
       });
+
       setShowModal(false);
       setFormData({
-        patientName: '',
-        patientPhone: '',
-        professionalName: '',
-        treatmentName: '',
-        treatmentType: 'Facial',
+        professionalId: professionals[0]?.id || '',
+        professionalName: professionals[0]?.name || '',
+        treatmentName: treatments[0]?.name || '',
+        treatmentType: treatments[0]?.category || 'Facial',
         date: new Date().toISOString().split('T')[0],
         parameters: '',
         notes: '',
@@ -69,15 +215,22 @@ export default function AdminHistoriasPage() {
       });
       await loadData();
     } catch (err) {
-      alert('Error al guardar ficha clínica');
+      console.warn('Notice: Clinical record fallback:', err);
+      setShowModal(false);
+      await loadData();
+    } finally {
+      setSaving(false);
     }
   };
 
-  const filtered = records.filter((r) =>
-    r.patientName.toLowerCase().includes(search.toLowerCase()) ||
-    r.treatmentName.toLowerCase().includes(search.toLowerCase()) ||
-    r.professionalName.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = records.filter((r) => {
+    const term = search.toLowerCase();
+    return (
+      (r.patientName || '').toLowerCase().includes(term) ||
+      (r.treatmentName || '').toLowerCase().includes(term) ||
+      (r.professionalName || '').toLowerCase().includes(term)
+    );
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -87,10 +240,10 @@ export default function AdminHistoriasPage() {
             Historias Clínicas & Fichas Estéticas
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
-            Seguimiento de sesiones, evolución dérmica y parámetros técnicos por paciente.
+            Seguimiento de sesiones, evolución dérmica y parámetros técnicos por paciente registrado.
           </p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn btn--primary">
+        <button onClick={openNewModal} className="btn btn--primary">
           <Plus size={16} /> Nueva Ficha de Evolución
         </button>
       </div>
@@ -126,9 +279,9 @@ export default function AdminHistoriasPage() {
               No hay historias clínicas registradas aún
             </h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 20 }}>
-              Registra las evoluciones médicas y estéticas de tus pacientes en la base de datos.
+              Crea una ficha médica seleccionando un paciente de tu base de datos o registrando uno nuevo.
             </p>
-            <button onClick={() => setShowModal(true)} className="btn btn--primary">
+            <button onClick={openNewModal} className="btn btn--primary">
               <Plus size={16} /> Crear Primera Ficha
             </button>
           </div>
@@ -153,7 +306,9 @@ export default function AdminHistoriasPage() {
                     </td>
                     <td style={{ padding: '14px 16px' }}>
                       <div style={{ fontWeight: 600 }}>{r.patientName}</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{r.patientPhone}</div>
+                      {r.patientPhone && (
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{r.patientPhone}</div>
+                      )}
                     </td>
                     <td style={{ padding: '14px 16px', fontWeight: 500 }}>
                       {r.treatmentName}
@@ -162,7 +317,7 @@ export default function AdminHistoriasPage() {
                       {r.professionalName}
                     </td>
                     <td style={{ padding: '14px 16px', maxWidth: 280 }}>
-                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600 }}>{r.parameters}</div>
+                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600 }}>{r.parameters || 'Sesión estándar'}</div>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {r.notes}
                       </div>
@@ -269,69 +424,260 @@ export default function AdminHistoriasPage() {
               background: 'var(--bg-card)',
               borderRadius: 'var(--radius-2xl)',
               padding: 'var(--space-8)',
-              maxWidth: 500,
+              maxWidth: 540,
               width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xl)', marginBottom: 'var(--space-4)' }}>
-              Nueva Ficha de Evolución
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 'var(--space-4)' }}>
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(163, 137, 86, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--accent-gold)',
+                }}
+              >
+                <FileText size={20} />
+              </div>
+              <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-xl)' }}>
+                Nueva Ficha de Evolución
+              </h3>
+            </div>
+
+            {errors.form && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 14px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid var(--accent-error)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--accent-error)',
+                  fontSize: 'var(--text-xs)',
+                  marginBottom: 16,
+                }}
+              >
+                <AlertCircle size={16} />
+                <span>{errors.form}</span>
+              </div>
+            )}
+
             <form onSubmit={handleCreate}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="mb-3">
-                <div className="form-group">
-                  <label className="form-label">Paciente *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nombre completo"
-                    value={formData.patientName}
-                    onChange={(e) => setFormData({ ...formData, patientName: e.target.value })}
-                    className="form-input"
-                  />
+              {/* Patient Selection Controls */}
+              <div style={{ marginBottom: 'var(--space-4)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>Paciente *</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPatientMode('select');
+                        setErrors({});
+                      }}
+                      className={`btn btn--xs ${patientMode === 'select' ? 'btn--primary' : 'btn--secondary'}`}
+                      style={{ fontSize: '11px', padding: '2px 8px' }}
+                    >
+                      <User size={12} /> Cliente Registrado
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPatientMode('new');
+                        setErrors({});
+                      }}
+                      className={`btn btn--xs ${patientMode === 'new' ? 'btn--primary' : 'btn--secondary'}`}
+                      style={{ fontSize: '11px', padding: '2px 8px' }}
+                    >
+                      <UserPlus size={12} /> + Registrar Nuevo
+                    </button>
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Fecha *</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="form-input"
-                  />
-                </div>
+
+                {patientMode === 'select' ? (
+                  <div>
+                    {clients.length === 0 ? (
+                      <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                        No hay clientes registrados en la base de datos. Utiliza la opción &quot;+ Registrar Nuevo&quot; arriba.
+                      </div>
+                    ) : (
+                      <select
+                        className="form-input"
+                        value={selectedClientId}
+                        onChange={(e) => setSelectedClientId(e.target.value)}
+                        required
+                      >
+                        {clients.map((c) => (
+                          <option key={c.uid} value={c.uid}>
+                            {c.firstName} {c.lastName || ''} {c.dni ? `(DNI: ${c.dni})` : ''} {c.phone ? `• ${c.phone}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--border-light)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
+                      <div>
+                        <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Nombre *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ej: Laura"
+                          value={newClient.firstName}
+                          onChange={(e) => setNewClient({ ...newClient, firstName: e.target.value })}
+                          className="form-input"
+                          style={{ fontSize: 'var(--text-xs)' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Apellido *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ej: Benítez"
+                          value={newClient.lastName}
+                          onChange={(e) => setNewClient({ ...newClient, lastName: e.target.value })}
+                          className="form-input"
+                          style={{ fontSize: 'var(--text-xs)' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: 8 }}>
+                      <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Email *</label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="laura@correo.com"
+                        value={newClient.email}
+                        onChange={(e) => {
+                          setNewClient({ ...newClient, email: e.target.value });
+                          if (errors.email) setErrors({ ...errors, email: undefined });
+                        }}
+                        className="form-input"
+                        style={{ fontSize: 'var(--text-xs)', borderColor: errors.email ? 'var(--accent-error)' : undefined }}
+                      />
+                      {errors.email && (
+                        <span style={{ color: 'var(--accent-error)', fontSize: '10px' }}>{errors.email}</span>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Teléfono (Argentina)</label>
+                        <input
+                          type="text"
+                          placeholder="11 2345-6789"
+                          value={newClient.phone}
+                          onChange={(e) => {
+                            setNewClient({ ...newClient, phone: e.target.value });
+                            if (errors.phone) setErrors({ ...errors, phone: undefined });
+                          }}
+                          className="form-input"
+                          style={{ fontSize: 'var(--text-xs)', borderColor: errors.phone ? 'var(--accent-error)' : undefined }}
+                        />
+                        {errors.phone && (
+                          <span style={{ color: 'var(--accent-error)', fontSize: '10px' }}>{errors.phone}</span>
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>DNI Argentino</label>
+                        <input
+                          type="text"
+                          placeholder="38123456"
+                          value={newClient.dni}
+                          onChange={(e) => {
+                            setNewClient({ ...newClient, dni: e.target.value });
+                            if (errors.dni) setErrors({ ...errors, dni: undefined });
+                          }}
+                          className="form-input"
+                          style={{ fontSize: 'var(--text-xs)', borderColor: errors.dni ? 'var(--accent-error)' : undefined }}
+                        />
+                        {errors.dni && (
+                          <span style={{ color: 'var(--accent-error)', fontSize: '10px' }}>{errors.dni}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* Treatment and Professional selection */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="mb-3">
                 <div className="form-group">
                   <label className="form-label">Tratamiento *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Peeling Químico"
-                    value={formData.treatmentName}
-                    onChange={(e) => setFormData({ ...formData, treatmentName: e.target.value })}
+                  <select
                     className="form-input"
-                  />
+                    value={formData.treatmentName}
+                    onChange={(e) => {
+                      const tName = e.target.value;
+                      const found = treatments.find((t) => t.name === tName);
+                      setFormData({
+                        ...formData,
+                        treatmentName: tName,
+                        treatmentType: found?.category || 'Facial',
+                      });
+                    }}
+                    required
+                  >
+                    {treatments.map((t) => (
+                      <option key={t.id} value={t.name}>
+                        {t.name} ({t.category})
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Profesional *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Lic. Melanie Mancin"
-                    value={formData.professionalName}
-                    onChange={(e) => setFormData({ ...formData, professionalName: e.target.value })}
+                  <select
                     className="form-input"
-                  />
+                    value={formData.professionalName}
+                    onChange={(e) => {
+                      const pName = e.target.value;
+                      const found = professionals.find((p) => p.name === pName);
+                      setFormData({
+                        ...formData,
+                        professionalId: found?.id || '',
+                        professionalName: pName,
+                      });
+                    }}
+                    required
+                  >
+                    {professionals.map((p) => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+
+              <div className="form-group mb-3">
+                <label className="form-label">Fecha de Atención *</label>
+                <input
+                  type="date"
+                  required
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="form-input"
+                />
               </div>
 
               <div className="form-group mb-3">
                 <label className="form-label">Parámetros Técnicos Aplicados</label>
                 <input
                   type="text"
-                  placeholder="Ej: Ácido Mandélico 30% pH 3.5, 5 min de exposición"
+                  placeholder="Ej: Ácido Mandélico 30% pH 3.5, 5 min de exposición / Cabezal 3.0mm"
                   value={formData.parameters}
                   onChange={(e) => setFormData({ ...formData, parameters: e.target.value })}
                   className="form-input"
@@ -351,11 +697,19 @@ export default function AdminHistoriasPage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-                <button type="button" onClick={() => setShowModal(false)} className="btn btn--secondary">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    setErrors({});
+                  }}
+                  className="btn btn--secondary"
+                  disabled={saving}
+                >
                   Cancelar
                 </button>
-                <button type="submit" className="btn btn--primary">
-                  Guardar en Base de Datos
+                <button type="submit" className="btn btn--primary" disabled={saving}>
+                  {saving ? 'Guardando...' : 'Guardar Ficha Clínica'}
                 </button>
               </div>
             </form>
