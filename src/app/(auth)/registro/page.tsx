@@ -70,7 +70,7 @@ export default function RegisterPage() {
       if (result?.error) {
         setGeneralError('Cuenta creada, pero hubo un error al iniciar sesión. Intentá ingresar manualmente.');
       } else {
-        router.push('/mi-cuenta');
+        router.push('/mi-cuenta/turnos');
         router.refresh();
       }
     } catch {

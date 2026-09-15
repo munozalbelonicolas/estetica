@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import { signIn, getSession } from 'next-auth/react';
 import { Eye, EyeOff, LogIn, ArrowLeft } from 'lucide-react';
 import './auth.css';
 
@@ -30,7 +30,16 @@ export default function LoginPage() {
       if (result?.error) {
         setError('Email o contraseña incorrectos');
       } else {
-        router.push('/mi-cuenta');
+        const session = await getSession();
+        const roles = (session?.user as any)?.roles || [];
+
+        if (roles.includes('admin')) {
+          router.push('/admin');
+        } else if (roles.includes('professional')) {
+          router.push('/profesional/agenda');
+        } else {
+          router.push('/mi-cuenta/turnos');
+        }
         router.refresh();
       }
     } catch {
