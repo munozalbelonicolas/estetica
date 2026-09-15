@@ -12,7 +12,7 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth';
 import { auth, googleProvider, isAdminEmail } from '@/lib/firebase';
-import { getUserProfile, setUserProfile, UserProfile } from '@/lib/firestore-service';
+import { getUserProfile, setUserProfile, getProfessionals, UserProfile } from '@/lib/firestore-service';
 
 interface AuthContextType {
   user: FirebaseUser | null;
@@ -49,6 +49,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           let profile = await getUserProfile(firebaseUser.uid);
           const shouldBeAdmin = isAdminEmail(firebaseUser.email);
+          const profs = await getProfessionals();
+          const isRegisteredProf = profs.some(
+            (p) => p.email && p.email.toLowerCase() === (firebaseUser.email || '').toLowerCase()
+          );
 
           if (!profile) {
             // Split displayName or fallback
@@ -56,13 +60,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const firstName = names[0] || 'Usuario';
             const lastName = names.slice(1).join(' ') || '';
 
+            const initialRoles: string[] = ['client'];
+            if (shouldBeAdmin) initialRoles.push('admin');
+            if (isRegisteredProf) initialRoles.push('professional');
+
             profile = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
               firstName,
               lastName,
               avatarUrl: firebaseUser.photoURL || '',
-              roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
+              roles: initialRoles,
               emailVerified: firebaseUser.emailVerified,
             };
             try {
@@ -70,14 +78,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } catch (saveErr) {
               console.warn('Could not persist profile to Firestore:', saveErr);
             }
-          } else if (shouldBeAdmin && !profile.roles?.includes('admin')) {
-            // Upgrade to admin if email is in the admin list
-            const updatedRoles = Array.from(new Set([...(profile.roles || []), 'admin']));
-            profile.roles = updatedRoles;
-            try {
-              await setUserProfile(firebaseUser.uid, { roles: updatedRoles });
-            } catch (saveErr) {
-              console.warn('Could not persist admin role to Firestore:', saveErr);
+          } else {
+            let rolesToUpdate = [...(profile.roles || [])];
+            let changed = false;
+
+            if (shouldBeAdmin && !rolesToUpdate.map((r) => r.toLowerCase()).includes('admin')) {
+              rolesToUpdate.push('admin');
+              changed = true;
+            }
+            if (isRegisteredProf && !rolesToUpdate.map((r) => r.toLowerCase()).includes('professional')) {
+              rolesToUpdate.push('professional');
+              changed = true;
+            }
+
+            if (changed) {
+              profile.roles = Array.from(new Set(rolesToUpdate));
+              try {
+                await setUserProfile(firebaseUser.uid, { roles: profile.roles });
+              } catch (saveErr) {
+                console.warn('Could not persist updated roles to Firestore:', saveErr);
+              }
             }
           }
 
@@ -90,7 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: firebaseUser.email || '',
             firstName: firebaseUser.displayName || 'Usuario',
             lastName: '',
-            roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
+            roles: shouldBeAdmin ? ['admin', 'professional', 'client'] : ['client'],
             emailVerified: firebaseUser.emailVerified,
           });
         }
@@ -240,9 +260,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const roles = userProfile?.roles || [];
-  const isAdmin = roles.includes('admin') || isAdminEmail(user?.email);
-  const isProfessional = roles.includes('professional');
-  const isClient = roles.includes('client');
+  const normalizedRoles = roles.map((r) => r.toLowerCase());
+  const isAdmin = normalizedRoles.includes('admin') || isAdminEmail(user?.email);
+  const isProfessional = normalizedRoles.includes('professional') || isAdmin;
+  const isClient = normalizedRoles.includes('client');
 
   return (
     <AuthContext.Provider

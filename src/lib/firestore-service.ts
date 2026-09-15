@@ -62,6 +62,8 @@ export interface Professional {
   userId?: string;
   name: string;
   email?: string;
+  phone?: string;
+  dni?: string;
   role: string;
   specialties: string[];
   bio: string;
