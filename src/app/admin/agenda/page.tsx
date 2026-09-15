@@ -143,27 +143,31 @@ export default function AdminAgendaPage() {
     }
   };
 
-  const handleSelectClient = (clientId: string) => {
-    if (clientId === 'manual') {
-      setNewAppt({
-        ...newAppt,
-        clientId: '',
-        clientName: '',
-        clientPhone: '',
-        clientEmail: '',
-      });
-      return;
-    }
-    const found = clients.find((c) => c.uid === clientId);
-    if (found) {
-      setNewAppt({
-        ...newAppt,
-        clientId: found.uid,
-        clientName: `${found.firstName} ${found.lastName || ''}`.trim(),
-        clientPhone: found.phone || '',
-        clientEmail: found.email || '',
-      });
-    }
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+
+  const handleSelectClient = (client: UserProfile) => {
+    setNewAppt({
+      ...newAppt,
+      clientId: client.uid,
+      clientName: `${client.firstName} ${client.lastName || ''}`.trim(),
+      clientPhone: client.phone || '',
+      clientEmail: client.email || '',
+    });
+    setClientSearchQuery(`${client.firstName} ${client.lastName || ''}`.trim());
+    setShowClientDropdown(false);
+  };
+
+  const handleClearClient = () => {
+    setNewAppt({
+      ...newAppt,
+      clientId: '',
+      clientName: '',
+      clientPhone: '',
+      clientEmail: '',
+    });
+    setClientSearchQuery('');
+    setShowClientDropdown(false);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -529,21 +533,128 @@ export default function AdminAgendaPage() {
               Agendar Turno Manual
             </h3>
             <form onSubmit={handleCreate}>
-              {/* Select Existing Client or Type New */}
-              <div className="form-group mb-3">
-                <label className="form-label">Seleccionar Cliente de la Base de Datos</label>
-                <select
-                  onChange={(e) => handleSelectClient(e.target.value)}
-                  className="form-input"
-                >
-                  <option value="manual">-- Escribir cliente manualmente --</option>
-                  {clients.map((c) => (
-                    <option key={c.uid} value={c.uid}>
-                      {c.firstName} {c.lastName} ({c.phone || c.email})
-                    </option>
-                  ))}
-                </select>
+              {/* Searchable Client Autocomplete */}
+              <div className="form-group mb-3" style={{ position: 'relative' }}>
+                <label className="form-label">Buscar Paciente Registrado</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <Search size={16} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-muted)' }} />
+                    <input
+                      type="text"
+                      placeholder="Escribe para buscar paciente (nombre, teléfono, DNI, email)..."
+                      value={clientSearchQuery}
+                      onChange={(e) => {
+                        setClientSearchQuery(e.target.value);
+                        setShowClientDropdown(true);
+                      }}
+                      onFocus={() => setShowClientDropdown(true)}
+                      className="form-input"
+                      style={{ paddingLeft: 36, fontSize: 'var(--text-xs)' }}
+                    />
+                  </div>
+                  {newAppt.clientId && (
+                    <button
+                      type="button"
+                      onClick={handleClearClient}
+                      className="btn btn--secondary"
+                      style={{ fontSize: '11px', padding: '0 10px' }}
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+
+                {/* Autocomplete Dropdown */}
+                {showClientDropdown && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: 'var(--radius-lg)',
+                      boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4)',
+                      zIndex: 100,
+                      maxHeight: 220,
+                      overflowY: 'auto',
+                      marginTop: 4,
+                    }}
+                  >
+                    {(() => {
+                      const term = clientSearchQuery.toLowerCase().trim();
+                      const matched = clients.filter((c) => {
+                        const name = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase();
+                        const email = (c.email || '').toLowerCase();
+                        const phone = (c.phone || '').toLowerCase();
+                        const dni = (c.dni || '').toLowerCase();
+                        return name.includes(term) || email.includes(term) || phone.includes(term) || dni.includes(term);
+                      });
+
+                      if (matched.length === 0) {
+                        return (
+                          <div style={{ padding: 12, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textAlign: 'center' }}>
+                            No se encontraron clientes con ese criterio. Completa los datos abajo para registrar el turno.
+                          </div>
+                        );
+                      }
+
+                      return matched.map((c) => (
+                        <div
+                          key={c.uid}
+                          onClick={() => handleSelectClient(c)}
+                          style={{
+                            padding: '10px 14px',
+                            borderBottom: '1px solid var(--border-light)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: 'var(--text-xs)',
+                            transition: 'background 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                              {c.firstName} {c.lastName || ''}
+                            </div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                              {c.email} {c.phone ? `• ${c.phone}` : ''} {c.dni ? `• DNI: ${c.dni}` : ''}
+                            </div>
+                          </div>
+                          <span style={{ color: 'var(--accent-gold)', fontWeight: 600, fontSize: '11px' }}>
+                            Seleccionar
+                          </span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
               </div>
+
+              {newAppt.clientId && (
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    background: 'rgba(92, 127, 107, 0.12)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--primary)',
+                    color: 'var(--primary)',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 12,
+                  }}
+                >
+                  <span>✓ Paciente vinculado: {newAppt.clientName}</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>ID: {newAppt.clientId}</span>
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="mb-3">
                 <div className="form-group">

@@ -46,6 +46,7 @@ export const metadata: Metadata = {
 };
 
 import WhatsAppButton from '@/components/public/WhatsAppButton';
+import ForcePasswordChangeModal from '@/components/auth/ForcePasswordChangeModal';
 
 export default function RootLayout({
   children,
@@ -57,6 +58,7 @@ export default function RootLayout({
       <body>
         <Providers>
           {children}
+          <ForcePasswordChangeModal />
           <WhatsAppButton />
         </Providers>
       </body>

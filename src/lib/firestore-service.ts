@@ -27,6 +27,8 @@ export interface UserProfile {
   avatarUrl?: string;
   roles: string[];
   emailVerified: boolean;
+  mustChangePassword?: boolean;
+  tempPassword?: string;
   createdAt?: any;
   updatedAt?: any;
 }
