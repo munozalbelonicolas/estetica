@@ -101,6 +101,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
 
+          if (profile?.isBlocked) {
+            setUser(null);
+            setUserProfileState(null);
+            await signOut(auth);
+            setLoading(false);
+            return;
+          }
+
           setUserProfileState(profile);
         } catch (err) {
           console.error('Error fetching/setting user profile in Firestore:', err);
@@ -133,6 +141,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile = await getUserProfile(cred.user.uid);
     } catch (e) {
       console.warn('Could not fetch user profile from Firestore:', e);
+    }
+
+    if (profile?.isBlocked) {
+      await signOut(auth);
+      throw new Error('Esta cuenta se encuentra bloqueada/suspendida por la administración.');
     }
 
     if (!profile) {
@@ -208,6 +221,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       profile = await getUserProfile(cred.user.uid);
     } catch (e) {
       console.warn('Could not fetch user profile from Firestore:', e);
+    }
+
+    if (profile?.isBlocked) {
+      await signOut(auth);
+      throw new Error('Esta cuenta se encuentra bloqueada/suspendida por la administración.');
     }
 
     if (!profile) {

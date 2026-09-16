@@ -29,6 +29,7 @@ export interface UserProfile {
   emailVerified: boolean;
   mustChangePassword?: boolean;
   tempPassword?: string;
+  isBlocked?: boolean;
   createdAt?: any;
   updatedAt?: any;
 }

@@ -43,12 +43,14 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/user-not-found' || err?.code === 'auth/wrong-password') {
+      if (err?.message?.includes('bloqueada') || err?.message?.includes('suspendida')) {
+        setError(err.message);
+      } else if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/user-not-found' || err?.code === 'auth/wrong-password') {
         setError('Email o contraseña incorrectos.');
       } else if (err?.code === 'auth/too-many-requests') {
         setError('Demasiados intentos fallidos. Por favor, intentá más tarde o recuperá tu contraseña.');
       } else {
-        setError('Ocurrió un error al iniciar sesión. Verificá tus credenciales.');
+        setError(err?.message || 'Ocurrió un error al iniciar sesión. Verificá tus credenciales.');
       }
     } finally {
       setLoading(false);
