@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, LogIn, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { isAdminEmail } from '@/lib/firebase';
 import './auth.css';
 
 export default function LoginPage() {
@@ -20,10 +21,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  const redirectByRole = (roles: string[]) => {
-    if (roles.includes('admin')) {
+  const redirectByRole = (roles: string[] = [], userEmail?: string | null) => {
+    const lowerRoles = (roles || []).map((r) => r.toLowerCase());
+    if (lowerRoles.includes('admin') || lowerRoles.includes('director') || isAdminEmail(userEmail)) {
       router.push('/admin');
-    } else if (roles.includes('professional')) {
+    } else if (lowerRoles.includes('professional') || lowerRoles.includes('doctor')) {
       router.push('/profesional/agenda');
     } else {
       router.push('/mi-cuenta/turnos');
@@ -39,7 +41,7 @@ export default function LoginPage() {
     try {
       const profile = await loginWithEmail(email, password);
       if (profile) {
-        redirectByRole(profile.roles || ['client']);
+        redirectByRole(profile.roles || ['client'], profile.email || email);
       }
     } catch (err: any) {
       console.error('Login error:', err);
@@ -63,7 +65,7 @@ export default function LoginPage() {
     try {
       const profile = await loginWithGoogle();
       if (profile) {
-        redirectByRole(profile.roles || ['client']);
+        redirectByRole(profile.roles || ['client'], profile.email);
       }
     } catch (err: any) {
       console.error('Google login error:', err);
