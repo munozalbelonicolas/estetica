@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 
 export interface UserProfile {
   uid: string;
@@ -250,8 +250,12 @@ export async function setUserProfile(uid: string, data: Partial<UserProfile>): P
       },
       { merge: true }
     );
-  } catch (error) {
-    console.warn('Notice: could not persist user profile to Firestore (saved locally):', error);
+  } catch (error: any) {
+    const authStatus = auth.currentUser
+      ? `Usuario autenticado: ${auth.currentUser.email} (${auth.currentUser.uid})`
+      : 'Sin sesión activa en Firebase Auth';
+    console.warn(`Notice: No se pudo guardar perfil en Firestore [${authStatus}]:`, error);
+    throw error;
   }
 }
 
@@ -295,8 +299,12 @@ export async function createClientProfile(data: Omit<UserProfile, 'uid'> & { uid
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-  } catch (error) {
-    console.warn('Notice: Firestore createClientProfile permission restricted, saved to local store:', error);
+  } catch (error: any) {
+    const authStatus = auth.currentUser
+      ? `Usuario autenticado: ${auth.currentUser.email} (${auth.currentUser.uid})`
+      : 'Sin sesión activa en Firebase Auth';
+    console.warn(`Notice: Firestore createClientProfile permission restricted [${authStatus}]:`, error);
+    throw error;
   }
 
   return uid;

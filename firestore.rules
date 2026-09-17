@@ -2,48 +2,55 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Verifica si el usuario está logueado
+    // Verifica si el usuario está autenticado en Firebase
     function isAuthenticated() {
       return request.auth != null;
     }
-
-    function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email.lower() in [
-          'melaniemancin@gmail.com',
-          'munozalbelonicolas@gmail.com',
-          'nicolasmunozalbelo@gmail.com'
-        ]
-      );
-    }
     
-    // Perfiles de usuario: cada usuario autenticado puede leer. Puede editar su propio perfil o un administrador
+    // Perfiles de usuario, clientes y profesionales:
+    // Permite lectura y escritura a cualquier usuario autenticado en el sistema
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow read, write: if isAuthenticated();
     }
     
-    // Tratamientos y categorías: lectura pública, edición para usuarios logueados/admins
+    // Tratamientos y servicios: catálogo público, edición para usuarios autenticados
     match /treatments/{document=**} {
       allow read: if true;
       allow write: if isAuthenticated();
     }
     
-    // Profesionales: lectura pública
+    // Profesionales del centro: catálogo público, edición para usuarios autenticados
     match /professionals/{document=**} {
       allow read: if true;
       allow write: if isAuthenticated();
     }
 
-    // Consultorios y boxes: lectura pública, edición para administradores
+    // Consultorios y boxes: lectura pública, edición para usuarios autenticados
     match /rooms/{document=**} {
       allow read: if true;
       allow write: if isAuthenticated();
     }
     
-    // Turnos y citas: lectura y creación para usuarios logueados
+    // Turnos y citas: lectura y escritura para usuarios autenticados
     match /appointments/{document=**} {
       allow read, write: if isAuthenticated();
     }
+
+    // Historias clínicas y notas de evolución médica
+    match /medicalRecords/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Fotos de evolución estética / médica
+    match /evolutionPhotos/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Configuración general del centro
+    match /settings/{document=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
   }
 }
+
