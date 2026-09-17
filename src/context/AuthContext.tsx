@@ -52,7 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (firebaseUser) {
         try {
-          let profile = await getUserProfile(firebaseUser.uid);
+          let profile = await getUserProfile(firebaseUser.uid, firebaseUser.email || undefined);
           const shouldBeAdmin = isAdminEmail(firebaseUser.email);
           const profs = await getProfessionals();
           const isRegisteredProf = profs.some(
@@ -143,7 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let profile: UserProfile | null = null;
 
     try {
-      profile = await getUserProfile(cred.user.uid);
+      profile = await getUserProfile(cred.user.uid, cred.user.email || email);
     } catch (e) {
       console.warn('Could not fetch user profile from Firestore:', e);
     }
@@ -228,7 +228,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let profile: UserProfile | null = null;
 
     try {
-      profile = await getUserProfile(cred.user.uid);
+      profile = await getUserProfile(cred.user.uid, cred.user.email || undefined);
     } catch (e) {
       console.warn('Could not fetch user profile from Firestore:', e);
     }

@@ -222,7 +222,7 @@ function removeLocalItem<T extends { id?: string; uid?: string }>(
 
 // ─── USERS / CLIENTS ─────────────────────────────────────────────────────────
 
-export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+export async function getUserProfile(uid: string, email?: string): Promise<UserProfile | null> {
   try {
     const userDoc = await getDoc(doc(db, 'users', uid));
     if (userDoc.exists()) {
@@ -230,12 +230,27 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
       upsertLocalItem<UserProfile>('users', data, 'uid');
       return data;
     }
+
+    // Fallback: Si el perfil fue cargado previamente con otro ID autogenerado, lo buscamos por email
+    if (email) {
+      const q = query(collection(db, 'users'), where('email', '==', email.toLowerCase()));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const found = snap.docs[0].data() as Omit<UserProfile, 'uid'>;
+        const linkedData = { ...found, uid };
+        try {
+          await setDoc(doc(db, 'users', uid), linkedData, { merge: true });
+        } catch {}
+        upsertLocalItem<UserProfile>('users', linkedData, 'uid');
+        return linkedData;
+      }
+    }
   } catch (error) {
     console.warn('Notice: Firestore getUserProfile was not accessible, checking local fallback:', error);
   }
   // Local fallback
   const localUsers = getLocalCollection<UserProfile>('users');
-  return localUsers.find((u) => u.uid === uid) || null;
+  return localUsers.find((u) => u.uid === uid || (email && u.email?.toLowerCase() === email.toLowerCase())) || null;
 }
 
 export async function setUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
