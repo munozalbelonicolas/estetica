@@ -14,7 +14,9 @@ import {
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
-import { db, auth } from './firebase';
+import { db, auth, firebaseConfig } from './firebase';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 
 export interface UserProfile {
   uid: string;
@@ -274,6 +276,26 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 
   const localUsers = getLocalCollection<UserProfile>('users');
   return localUsers.length > 0 ? localUsers : firestoreUsers;
+}
+
+/**
+ * Crea una cuenta real en Firebase Authentication sin desloguear al administrador actual.
+ * Usa una instancia secundaria aislada de Firebase App.
+ */
+export async function createAuthUserAccount(email: string, password: string): Promise<string> {
+  const secondaryAppName = `auth-create-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+  try {
+    const secondaryAuth = getAuth(secondaryApp);
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    const uid = cred.user.uid;
+    await signOut(secondaryAuth);
+    return uid;
+  } finally {
+    try {
+      await deleteApp(secondaryApp);
+    } catch {}
+  }
 }
 
 export async function createClientProfile(data: Omit<UserProfile, 'uid'> & { uid?: string }): Promise<string> {

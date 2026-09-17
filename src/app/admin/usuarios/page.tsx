@@ -23,7 +23,9 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { getAllUsers, createClientProfile, setUserProfile, UserProfile } from '@/lib/firestore-service';
+import { getAllUsers, createClientProfile, setUserProfile, UserProfile, createAuthUserAccount } from '@/lib/firestore-service';
+import { auth } from '@/lib/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { isValidArgentineDni, isValidArgentinePhone, isValidEmail } from '@/lib/validation';
 import { useAuth } from '@/context/AuthContext';
 
@@ -149,11 +151,30 @@ export default function AdminUsuariosPage() {
         assignedRoles.push('client');
       }
 
+      const emailClean = createData.email.trim().toLowerCase();
+      let authUid: string | undefined;
+
+      try {
+        authUid = await createAuthUserAccount(emailClean, createData.tempPassword);
+      } catch (authErr: any) {
+        if (authErr?.code === 'auth/email-already-in-use') {
+          console.warn('El correo ya existe en Firebase Auth, se continuará con la sincronización del perfil.');
+        } else if (authErr?.code === 'auth/weak-password') {
+          setErrors({ form: 'La contraseña debe tener al menos 6 caracteres según las políticas de Firebase.' });
+          setSaving(false);
+          return;
+        } else {
+          setErrors({ form: `Error en Firebase Auth: ${authErr?.message || authErr}` });
+          setSaving(false);
+          return;
+        }
+      }
+
       await createClientProfile({
-        uid: `usr_${Date.now()}`,
+        uid: authUid || `usr_${Date.now()}`,
         firstName: createData.firstName.trim(),
         lastName: createData.lastName.trim(),
-        email: createData.email.trim().toLowerCase(),
+        email: emailClean,
         phone: createData.phone.trim(),
         dni: createData.dni.replace(/[\.\s\-]/g, ''),
         roles: assignedRoles,
@@ -165,10 +186,10 @@ export default function AdminUsuariosPage() {
 
       setShowCreateModal(false);
       setErrors({});
-      showToast(`Usuario ${createData.firstName} creado con éxito con clave provisoria: ${createData.tempPassword}`);
+      showToast(`Usuario ${createData.firstName} creado con éxito en Firebase con clave: ${createData.tempPassword}`);
       await loadUsers();
-    } catch (err) {
-      setErrors({ form: 'No se pudo guardar el usuario en la base de datos.' });
+    } catch (err: any) {
+      setErrors({ form: err?.message || 'No se pudo guardar el usuario en la base de datos.' });
     } finally {
       setSaving(false);
     }
@@ -296,6 +317,17 @@ export default function AdminUsuariosPage() {
 
     setSaving(true);
     try {
+      // Si el usuario no tenía cuenta en Auth o necesita sincronización
+      try {
+        await createAuthUserAccount(selectedUser.email, resetData.tempPassword);
+      } catch (authErr: any) {
+        if (authErr?.code === 'auth/email-already-in-use') {
+          try {
+            await sendPasswordResetEmail(auth, selectedUser.email);
+          } catch {}
+        }
+      }
+
       await setUserProfile(selectedUser.uid, {
         mustChangePassword: true,
         tempPassword: resetData.tempPassword,
@@ -310,7 +342,7 @@ export default function AdminUsuariosPage() {
       );
 
       setResetData((prev) => ({ ...prev, success: true }));
-      showToast(`Contraseña blanqueada con éxito para ${selectedUser.firstName}. Clave: ${resetData.tempPassword}`);
+      showToast(`Contraseña actualizada con éxito para ${selectedUser.firstName}. Clave: ${resetData.tempPassword}`);
     } catch (e) {
       console.error(e);
       showToast('Error al blanquear la contraseña.', 'error');
