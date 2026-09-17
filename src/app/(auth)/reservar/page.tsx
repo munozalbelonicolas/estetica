@@ -12,6 +12,7 @@ import {
   Sparkles,
   User,
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import './reservar.css';
 
 type Step = 'treatment' | 'professional' | 'date' | 'confirm';
@@ -42,6 +43,7 @@ function ReservarContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedTreatment = searchParams.get('treatment');
+  const { user, userProfile } = useAuth();
 
   const [step, setStep] = useState<Step>('treatment');
   const [treatments, setTreatments] = useState<Treatment[]>([]);
@@ -121,6 +123,13 @@ function ReservarContent() {
     setError('');
 
     try {
+      const clientName = userProfile
+        ? `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim() || user?.displayName || 'Cliente'
+        : user?.displayName || 'Cliente';
+      const clientEmail = userProfile?.email || user?.email || 'cliente@email.com';
+      const clientPhone = userProfile?.phone || '';
+      const clientId = user?.uid || 'demo-client';
+
       const res = await fetch('/api/appointments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -129,6 +138,10 @@ function ReservarContent() {
           professionalId: selectedProfessional.id,
           date: selectedDate,
           startTime: selectedSlot.time,
+          clientId,
+          clientName,
+          clientEmail,
+          clientPhone,
         }),
       });
 

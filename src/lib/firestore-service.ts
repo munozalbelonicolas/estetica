@@ -354,6 +354,14 @@ export async function saveTreatment(treatment: Partial<Treatment> & { id?: strin
   return id;
 }
 
+export async function createTreatment(data: Omit<Treatment, 'id'>): Promise<string> {
+  return saveTreatment(data);
+}
+
+export async function updateTreatment(id: string, data: Partial<Treatment>): Promise<void> {
+  await saveTreatment({ ...data, id });
+}
+
 export async function deleteTreatment(id: string): Promise<void> {
   removeLocalItem<Treatment>('treatments', id, 'id');
   try {
@@ -448,6 +456,20 @@ export async function getAppointmentsByClient(clientId: string): Promise<Appoint
   return local.filter((a) => a.clientId === clientId);
 }
 
+export async function getAppointmentsByProfessional(professionalId: string): Promise<Appointment[]> {
+  try {
+    const q = query(collection(db, 'appointments'), where('professionalId', '==', professionalId));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
+    }
+  } catch (err) {
+    console.warn('Notice: Firestore getAppointmentsByProfessional fallback to local:', err);
+  }
+  const local = getLocalCollection<Appointment>('appointments');
+  return local.filter((a) => a.professionalId === professionalId);
+}
+
 export async function getAllAppointments(): Promise<Appointment[]> {
   try {
     const snapshot = await getDocs(collection(db, 'appointments'));
@@ -464,16 +486,20 @@ export async function getAllAppointments(): Promise<Appointment[]> {
 
 export async function updateAppointmentStatus(
   id: string,
-  status: Appointment['status']
+  status: Appointment['status'],
+  notes?: string
 ): Promise<void> {
   const items = getLocalCollection<Appointment>('appointments');
   const target = items.find((a) => a.id === id);
   if (target) {
     target.status = status;
+    if (notes !== undefined) target.notes = notes;
     saveLocalCollection('appointments', items);
   }
   try {
-    await updateDoc(doc(db, 'appointments', id), { status, updatedAt: serverTimestamp() });
+    const updateData: Record<string, any> = { status, updatedAt: serverTimestamp() };
+    if (notes !== undefined) updateData.notes = notes;
+    await updateDoc(doc(db, 'appointments', id), updateData);
   } catch {}
 }
 
@@ -820,3 +846,52 @@ export const defaultProfessionals: Professional[] = [
     isActive: true,
   },
 ];
+
+export const defaultRooms: Room[] = [
+  {
+    id: 'r-1',
+    name: 'Consultorio 1 - Facial & Dermocosmética',
+    description: 'Equipado para limpieza profunda, peelings químicos y alta frecuencia.',
+    equipment: ['Punta de diamante', 'Vaporizador de ozono', 'Lámpara de Wood', 'Alta frecuencia'],
+    isActive: true,
+  },
+  {
+    id: 'r-2',
+    name: 'Consultorio 2 - Modelado Corporal & Masajes',
+    description: 'Ambiente climatizado, camilla hidráulica ergonómica y aromaterapia.',
+    equipment: ['Equipo Criolipólisis Plana 4 cabezales', 'Ultracavitador', 'Camilla de madera termorregulada'],
+    isActive: true,
+  },
+  {
+    id: 'r-3',
+    name: 'Consultorio 3 - Láser Diodo Trío',
+    description: 'Sala con protección visual, filtros ópticos y cabezal continuo bajo cero.',
+    equipment: ['Láser Diodo Trío 808nm', 'Gafas de protección láser grado médico', 'Sistema de enfriamiento chiller'],
+    isActive: true,
+  },
+];
+
+export async function ensureSeededCollections(): Promise<void> {
+  try {
+    const tSnap = await getDocs(collection(db, 'treatments'));
+    if (tSnap.empty) {
+      for (const t of defaultTreatments) {
+        await setDoc(doc(db, 'treatments', t.id), { ...t, updatedAt: serverTimestamp() }, { merge: true });
+      }
+    }
+    const pSnap = await getDocs(collection(db, 'professionals'));
+    if (pSnap.empty) {
+      for (const p of defaultProfessionals) {
+        await setDoc(doc(db, 'professionals', p.id), { ...p, updatedAt: serverTimestamp() }, { merge: true });
+      }
+    }
+    const rSnap = await getDocs(collection(db, 'rooms'));
+    if (rSnap.empty) {
+      for (const r of defaultRooms) {
+        await setDoc(doc(db, 'rooms', r.id), { ...r, updatedAt: serverTimestamp() }, { merge: true });
+      }
+    }
+  } catch (e) {
+    console.warn('Notice: Firestore seeding check completed with fallback:', e);
+  }
+}

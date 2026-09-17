@@ -6,11 +6,21 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email.lower() in [
+          'melaniemancin@gmail.com',
+          'munozalbelonicolas@gmail.com',
+          'nicolasmunozalbelo@gmail.com'
+        ]
+      );
+    }
     
-    // Perfiles de usuario: cada usuario autenticado puede leer y editar su propio perfil
+    // Perfiles de usuario: cada usuario autenticado puede leer. Puede editar su propio perfil o un administrador
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
     }
     
     // Tratamientos y categorías: lectura pública, edición para usuarios logueados/admins
@@ -21,6 +31,12 @@ service cloud.firestore {
     
     // Profesionales: lectura pública
     match /professionals/{document=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Consultorios y boxes: lectura pública, edición para administradores
+    match /rooms/{document=**} {
       allow read: if true;
       allow write: if isAuthenticated();
     }

@@ -120,6 +120,7 @@ export default function AdminLayoutClient({
         <div className="admin-sidebar__footer">
           <Link
             href="/"
+            prefetch={false}
             className="admin-sidebar__link"
             title={collapsed ? 'Ver sitio' : undefined}
           >

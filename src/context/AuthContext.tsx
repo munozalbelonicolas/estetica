@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import {
   User as FirebaseUser,
   onAuthStateChanged,
@@ -40,10 +40,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfileState] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const isRegisteringRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
+
+      if (isRegisteringRef.current) {
+        return;
+      }
 
       if (firebaseUser) {
         try {
@@ -181,35 +186,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string,
     profileData: { firstName: string; lastName: string; phone?: string; birthDate?: string }
   ): Promise<UserProfile> => {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    
-    // Send email verification
+    isRegisteringRef.current = true;
     try {
-      await sendEmailVerification(cred.user);
-    } catch (e) {
-      console.warn('Could not send verification email:', e);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Send email verification
+      try {
+        await sendEmailVerification(cred.user);
+      } catch (e) {
+        console.warn('Could not send verification email:', e);
+      }
+
+      const shouldBeAdmin = isAdminEmail(email);
+      const profile: UserProfile = {
+        uid: cred.user.uid,
+        email: cred.user.email || email,
+        firstName: profileData.firstName,
+        lastName: profileData.lastName,
+        phone: profileData.phone || '',
+        birthDate: profileData.birthDate || '',
+        roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
+        emailVerified: false,
+      };
+
+      try {
+        await setUserProfile(cred.user.uid, profile);
+      } catch (saveErr) {
+        console.warn('Could not persist profile to Firestore:', saveErr);
+      }
+
+      setUserProfileState(profile);
+      return profile;
+    } finally {
+      isRegisteringRef.current = false;
     }
-
-    const shouldBeAdmin = isAdminEmail(email);
-    const profile: UserProfile = {
-      uid: cred.user.uid,
-      email: cred.user.email || email,
-      firstName: profileData.firstName,
-      lastName: profileData.lastName,
-      phone: profileData.phone || '',
-      birthDate: profileData.birthDate || '',
-      roles: shouldBeAdmin ? ['admin', 'client'] : ['client'],
-      emailVerified: false,
-    };
-
-    try {
-      await setUserProfile(cred.user.uid, profile);
-    } catch (saveErr) {
-      console.warn('Could not persist profile to Firestore:', saveErr);
-    }
-
-    setUserProfileState(profile);
-    return profile;
   };
 
   const loginWithGoogle = async (): Promise<UserProfile> => {

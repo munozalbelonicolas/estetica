@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAllAppointments } from '@/lib/firestore-service';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -28,14 +29,39 @@ export async function GET(request: NextRequest) {
     { roomId: 'cab-3', roomName: 'Cabina Láser 3 — Premium' },
   ];
 
-  const slots = baseTimes.map((time, idx) => {
-    const room = rooms[idx % rooms.length];
-    return {
-      time,
-      roomId: room.roomId,
-      roomName: room.roomName,
-    };
-  });
+  try {
+    const allAppointments = await getAllAppointments();
+    // Filter booked appointments on dateStr that are active (not cancelled)
+    const bookedTimes = new Set(
+      allAppointments
+        .filter((apt) => {
+          if (apt.date !== dateStr || apt.status === 'cancelled') return false;
+          if (professionalId && apt.professionalId && apt.professionalId !== professionalId) return false;
+          return true;
+        })
+        .map((apt) => apt.time)
+    );
 
-  return NextResponse.json({ slots });
+    const availableSlots = baseTimes
+      .filter((time) => !bookedTimes.has(time))
+      .map((time, idx) => {
+        const room = rooms[idx % rooms.length];
+        return {
+          time,
+          roomId: room.roomId,
+          roomName: room.roomName,
+        };
+      });
+
+    return NextResponse.json({ slots: availableSlots });
+  } catch (err) {
+    console.error('Error calculating availability:', err);
+    // fallback
+    const slots = baseTimes.map((time, idx) => ({
+      time,
+      roomId: rooms[idx % rooms.length].roomId,
+      roomName: rooms[idx % rooms.length].roomName,
+    }));
+    return NextResponse.json({ slots });
+  }
 }

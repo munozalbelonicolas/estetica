@@ -13,72 +13,11 @@ import {
 } from 'lucide-react';
 import './page.css';
 
-// Demo data - will be replaced by DB queries
-const featuredTreatments = [
-  {
-    id: '1',
-    name: 'Limpieza Facial Profunda',
-    slug: 'limpieza-facial-profunda',
-    description:
-      'Limpieza profesional que elimina impurezas, desobstruye poros y devuelve la luminosidad natural a tu piel.',
-    duration: 60,
-    category: 'Facial',
-    image: '/images/treatment-cleanse.jpg',
-  },
-  {
-    id: '2',
-    name: 'Radiofrecuencia Facial',
-    slug: 'radiofrecuencia-facial',
-    description:
-      'Tratamiento no invasivo que estimula la producción de colágeno para una piel más firme y rejuvenecida.',
-    duration: 45,
-    category: 'Facial',
-    image: '/images/treatment-radiofrequency.jpg',
-  },
-  {
-    id: '3',
-    name: 'Peeling Químico',
-    slug: 'peeling-quimico',
-    description:
-      'Renovación celular que mejora la textura, reduce manchas y unifica el tono de la piel.',
-    duration: 40,
-    category: 'Facial',
-    image: '/images/treatment-peeling.jpg',
-  },
-  {
-    id: '4',
-    name: 'Masaje Descontracturante',
-    slug: 'masaje-descontracturante',
-    description:
-      'Masaje terapéutico que alivia tensiones musculares y promueve la relajación profunda.',
-    duration: 50,
-    category: 'Corporal',
-    image: '/images/treatment-massage.jpg',
-  },
-];
+import { getTreatments, getProfessionals } from '@/lib/firestore-service';
 
-const teamMembers = [
-  {
-    name: 'Laura Martínez',
-    role: 'Especialista en Tratamientos Faciales',
-    specialties: ['Limpieza Facial', 'Peeling', 'Radiofrecuencia'],
-    image: '/images/team-laura.jpg',
-  },
-  {
-    name: 'María González',
-    role: 'Especialista en Tratamientos Corporales',
-    specialties: ['Masajes', 'Tratamientos Corporales', 'Drenaje Linfático'],
-    image: '/images/team-maria.jpg',
-  },
-  {
-    name: 'Ana López',
-    role: 'Especialista en Depilación y Dermaplaning',
-    specialties: ['Depilación', 'Dermaplaning', 'Tratamientos Faciales'],
-    image: '/images/team-ana.jpg',
-  },
-];
+export const dynamic = 'force-dynamic';
 
-const benefits = [
+const fallbackBenefits = [
   {
     icon: Shield,
     title: 'Profesionales Certificadas',
@@ -122,7 +61,15 @@ const testimonials = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const [allTreatments, allProfessionals] = await Promise.all([
+    getTreatments().catch(() => []),
+    getProfessionals().catch(() => []),
+  ]);
+
+  const featuredTreatments = allTreatments.slice(0, 4);
+  const teamMembers = allProfessionals;
+  const benefits = fallbackBenefits;
   return (
     <>
       {/* ─── HERO ──────────────────────────────────────────── */}
@@ -240,6 +187,8 @@ export default function HomePage() {
                     <img
                       src={treatment.image}
                       alt={treatment.name}
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   ) : (
@@ -296,6 +245,8 @@ export default function HomePage() {
                     <img
                       src={member.image}
                       alt={member.name}
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   ) : (
